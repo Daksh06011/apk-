@@ -201,15 +201,17 @@ class OHapticsStudioE2eTest {
         assertTrue("reel should have stopped", activity.composeRoot().allText().contains("▶  Play Tacta Tour"))
     }
 
+    /** What reaches the vibrator, read right after each vibrate() (the shadow keeps only the latest). */
     @Test fun motorReceivesTheComposedPrimitives() {
         val shadow = shadowOf(RuntimeEnvironment.getApplication().getSystemService(Vibrator::class.java))
+        val sent = mutableListOf<List<Pair<Int, Float>>>()
+        HapticLog.listener = { _, _ -> sent += shadow.primitiveSegmentsInPrimitiveEffects!!.map { it.id to it.scale } }
         val stage = scene("Drop")
+        sent.clear()
         activity.tap(stage.center)
         advance(1200)
-        val want = OHaptics.dropLift + OHaptics.dropImpact + OHaptics.dropBounce
-        val segs = shadow.primitiveSegmentsInPrimitiveEffects!!.takeLast(want.size)
-        assertEquals(want.map { it.prim.id }, segs.map { it.id })
-        assertEquals(want.map { it.scale }, segs.map { it.scale })
+        println("vibrator received: $sent")
+        assertEquals(listOf(OHaptics.dropLift, OHaptics.dropImpact, OHaptics.dropBounce).map { p -> p.map { it.prim.id to it.scale } }, sent)
     }
 
     @Test fun fallsBackToAWaveformWithoutPrimitiveSupport() {
