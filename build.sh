@@ -11,6 +11,10 @@ WORK=$(mktemp -d)
 java -jar $TOOLS/apktool.jar d -r -f -o "$WORK/src" original/PhoneTemp-1.0.0-debug.apk
 python3 patch/gen.py
 python3 patch/apply.py "$WORK/src"
+# Decoding with -r leaves sdkInfo empty, which makes smali emit dex 035. ART rejects interface
+# default methods (used by Compose and GradientRing) in dex < 037 -> crash on launch. Match the
+# original APK (minSdk 26 -> dex 038).
+sed -i "s/^sdkInfo:.*/sdkInfo:\n  minSdkVersion: '26'\n  targetSdkVersion: '35'/" "$WORK/src/apktool.yml"
 java -jar $TOOLS/apktool.jar b "$WORK/src" -o "$WORK/unsigned.apk"
 java -jar $TOOLS/signer.jar -a "$WORK/unsigned.apk" -o "$WORK/signed"
 cp "$WORK"/signed/*-debugSigned.apk dist/PhoneTemp-1.0.1-debug.apk
