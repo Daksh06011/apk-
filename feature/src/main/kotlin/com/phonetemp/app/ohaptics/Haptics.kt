@@ -2,11 +2,16 @@ package com.phonetemp.app.ohaptics
 
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.view.HapticFeedbackConstants
 import android.view.View
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 /**
  * The building blocks OnePlus-style haptics are made of: Android's composition primitives.
@@ -109,5 +114,22 @@ class HapticPlayer(private val view: View) {
         fun findVibrator(ctx: Context): Vibrator? =
             if (Build.VERSION.SDK_INT >= 31) ctx.getSystemService(VibratorManager::class.java)?.defaultVibrator
             else @Suppress("DEPRECATION") (ctx.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)
+    }
+}
+
+private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
+
+/**
+ * Suspends until SystemClock.uptimeMillis() reaches [at], via Handler.postAtTime on the main
+ * looper: millisecond-exact against the same clock as touch events and frames, with no drift from
+ * coroutine delay() implementations. Every timed haptic sequence schedules off a fixed start, so
+ * one late wake-up never shifts the hits after it.
+ */
+suspend fun awaitUptime(at: Long) {
+    if (SystemClock.uptimeMillis() >= at) return
+    suspendCancellableCoroutine<Unit> { cont ->
+        val tick = Runnable { if (cont.isActive) cont.resume(Unit) }
+        mainHandler.postAtTime(tick, at)
+        cont.invokeOnCancellation { mainHandler.removeCallbacks(tick) }
     }
 }

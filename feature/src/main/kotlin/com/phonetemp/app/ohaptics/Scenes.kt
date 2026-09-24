@@ -7,6 +7,8 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
@@ -14,7 +16,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -108,38 +109,43 @@ internal fun KnobScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: Pt
     }
 
     StageCanvas(
+        // Raw pointer tracking (no touch slop): the dial follows the finger from the first pixel.
+        // Fling speed comes from the events' own timestamps over the last 100 ms.
         Modifier.pointerInput(Unit) {
-            val trail = ArrayDeque<Pair<Long, Float>>()
-            var last = 0f
-            detectDragGestures(
-                onDragStart = { p ->
-                    scope.launch { spin.stop() }
-                    last = Offset(size.width / 2f, size.height / 2f).angleTo(p)
-                    trail.clear()
-                },
-                onDragEnd = {
-                    val now = SystemClock.uptimeMillis()
-                    val recent = trail.filter { now - it.first < 120 }
-                    val v = if (recent.size >= 2) {
-                        val dt = (recent.last().first - recent.first().first).coerceAtLeast(1)
-                        (recent.last().second - recent.first().second) / dt * 1000f
-                    } else 0f
-                    if (abs(v) > 90f) scope.launch {   // flick: coast down, ticks slowing like the video
-                        spin.snapTo(angle)
-                        spin.animateDecay(v.coerceIn(-1800f, 1800f), exponentialDecay(frictionMultiplier = 1.4f)) { moved(value) }
-                    }
-                },
-                onDrag = { change, _ ->
-                    val a = Offset(size.width / 2f, size.height / 2f).angleTo(change.position)
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                scope.launch { spin.stop() }
+                val c = Offset(size.width / 2f, size.height / 2f)
+                val deadZone = min(size.width, size.height) * 0.06f
+                var last = c.angleTo(down.position)
+                val trail = ArrayDeque<Pair<Long, Float>>()
+                trail.addLast(down.uptimeMillis to angle)
+                var releasedAt = down.uptimeMillis
+                while (true) {
+                    val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                    releasedAt = change.uptimeMillis
+                    if (!change.pressed) break
+                    change.consume()
+                    if ((change.position - c).getDistance() < deadZone) continue   // angle is unstable at the hub
+                    val a = c.angleTo(change.position)
                     var d = a - last
                     if (d > 180) d -= 360
                     if (d < -180) d += 360
                     last = a
                     moved(angle + d)
-                    trail.addLast(SystemClock.uptimeMillis() to angle)
-                    if (trail.size > 12) trail.removeFirst()
-                },
-            )
+                    trail.addLast(change.uptimeMillis to angle)
+                    while (trail.size > 2 && change.uptimeMillis - trail.first().first > 100) trail.removeFirst()
+                }
+                val first = trail.first()
+                val lastPoint = trail.last()
+                val dt = (lastPoint.first - first.first).coerceAtLeast(1)
+                val fresh = releasedAt - lastPoint.first < 80   // a pause before lifting cancels the fling
+                val v = if (fresh) (lastPoint.second - first.second) / dt * 1000f else 0f
+                if (abs(v) > 120f) scope.launch {   // flick: coast down, ticks slowing like the video
+                    spin.snapTo(angle)
+                    spin.animateDecay(v.coerceIn(-2000f, 2000f), exponentialDecay(frictionMultiplier = 1.3f)) { moved(value) }
+                }
+            }
         },
     ) {
         val c = center
@@ -162,16 +168,23 @@ internal fun DropScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: Pt
     val scope = rememberCoroutineScope()
 
     // Choreography matches the video: lift, impact 570 ms later, bounce 295 ms after that.
-    suspend fun drop(haptics: Boolean) {
+    suspend fun drop(haptics: Boolean) = coroutineScope {
         busy = true
-        if (haptics) fire(OHaptics.dropLift)
+        // Haptics run on their own clock so frame timing can never push a hit late:
+        // lift at 0, impact at 570 ms, bounce at 865 ms (the video's 6.185 / 6.755 / 7.050 s).
+        if (haptics) launch {
+            val start = SystemClock.uptimeMillis()
+            for ((at, p) in listOf(0 to OHaptics.dropLift, 570 to OHaptics.dropImpact, 865 to OHaptics.dropBounce)) {
+                awaitUptime(start + at)
+                fire(p)
+            }
+        }
+        val t0 = SystemClock.uptimeMillis()
         height.animateTo(1f, tween(200, easing = FastOutSlowInEasing))
-        delay(80)
+        awaitUptime(t0 + 280)   // falls so the ball lands on the 570 ms impact
         height.animateTo(0f, tween(290, easing = EaseIn))
-        if (haptics) fire(OHaptics.dropImpact)
         height.animateTo(0.18f, tween(140, easing = EaseOut))
         height.animateTo(0f, tween(155, easing = EaseIn))
-        if (haptics) fire(OHaptics.dropBounce)
         busy = false
     }
 
@@ -273,8 +286,10 @@ private class Ripple(val x: Float, val y: Float, val r: Float, val born: Long)
 
 @Composable
 internal fun BubbleScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: PtColors, still: Boolean) {
-    val bubbles = remember { mutableStateListOf<Bubble>().apply { repeat(7) { add(newBubble(spread = true)) } } }
-    val ripples = remember { mutableStateListOf<Ripple>() }
+    // Plain lists mutated on the frame loop; `frame` (read only while drawing) is the one state
+    // write per frame, so the scene redraws without any recomposition or snapshot churn.
+    val bubbles = remember { ArrayList<Bubble>().apply { repeat(7) { add(newBubble(spread = true)) } } }
+    val ripples = remember { ArrayList<Ripple>() }
     var frame by remember { mutableLongStateOf(0L) }
     var lastSpawn by remember { mutableLongStateOf(0L) }
 
@@ -288,7 +303,7 @@ internal fun BubbleScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: 
                 b.y -= dt * (0.05f + 0.10f * (1f - b.r))
                 if (b.y < -0.25f) { b.y = 1.15f + 0.3f * bubbleRandom.nextFloat(); b.x = 0.12f + 0.76f * bubbleRandom.nextFloat() }
             }
-            ripples.removeAll { now - it.born > 450 }
+            if (ripples.isNotEmpty()) ripples.removeAll { now - it.born > 450 }
             if (bubbles.size < 5 && now - lastSpawn > 450) { bubbles.add(newBubble()); lastSpawn = now }
             frame = now
         }
@@ -371,16 +386,16 @@ private class Burst(val x: Float, val y: Float, val color: Color, val born: Long
 
 @Composable
 internal fun BalloonScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: PtColors, still: Boolean) {
-    val balloons = remember { mutableStateListOf<Balloon>().apply { addAll(balloonSet()) } }
-    val bursts = remember { mutableStateListOf<Burst>() }
+    val balloons = remember { ArrayList<Balloon>().apply { addAll(balloonSet()) } }   // see BubbleScene
+    val bursts = remember { ArrayList<Burst>() }
     var frame by remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(Unit) {
         coroutineScope {
             while (true) {
                 frame = withFrameMillis { it }
-                bursts.removeAll { frame - it.born > 520 }
-                if (balloons.isEmpty() && bursts.isEmpty()) { delay(700); balloons.addAll(balloonSet()) }
+                if (bursts.isNotEmpty()) bursts.removeAll { frame - it.born > 520 }
+                if (balloons.isEmpty() && bursts.isEmpty()) { awaitUptime(SystemClock.uptimeMillis() + 700); balloons.addAll(balloonSet()) }
             }
         }
     }
@@ -462,8 +477,7 @@ internal fun SnapScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: Pt
             if (haptics) launch {
                 val start = SystemClock.uptimeMillis()
                 for ((at, p) in OHaptics.assembly) {
-                    val wait = at - (SystemClock.uptimeMillis() - start)
-                    if (wait > 0) delay(wait)
+                    awaitUptime(start + at)
                     fire(p)
                 }
             }

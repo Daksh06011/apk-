@@ -89,13 +89,14 @@ class OHapticsStudioE2eTest {
         val r = stage.height * 0.35f
         val flick = (0..6).map { i -> val a = Math.toRadians(-90.0 + i * 10.0); Offset(c.x + r * cos(a).toFloat(), c.y + r * sin(a).toFloat()) }
         activity.drag(flick, stepMs = 16)
-        val released = SystemClock.uptimeMillis()
         advance(3000)
-        val coast = fired.filter { it.at > released }.map { it.at }
+        // 60° dragged = 5 detents under the finger; everything after that is the coast.
+        val coast = fired.drop(5).map { it.at }
         val gaps = coast.zipWithNext { a, b -> b - a }
         println("coast ticks: ${coast.size}, gaps: $gaps")
         assertTrue("the dial should keep ticking after release: $gaps", coast.size >= 4)
         assertTrue("ticks should slow down like the video (80 -> 325 ms): $gaps", gaps.last() > gaps.first() * 2)
+        assertTrue("never speeds up again: $gaps", gaps.zipWithNext().all { (x, y) -> y >= x - 3 })
     }
 
     @Test fun dropMatchesTheVideoTiming() {

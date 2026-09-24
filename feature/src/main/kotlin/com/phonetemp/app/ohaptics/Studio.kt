@@ -84,15 +84,13 @@ fun OHapticsStudio(view: View, still: Boolean) {
         val start = SystemClock.uptimeMillis()
         val switches = OHaptics.reelScenes.toMutableList()
         for (cue in OHaptics.reel) {
-            val wait = cue.atMs - (SystemClock.uptimeMillis() - start)
-            if (wait > 0) delay(wait)
+            awaitUptime(start + cue.atMs)
             while (switches.isNotEmpty() && switches.first().first <= cue.atMs) scene = switches.removeAt(0).second
             player.play(cue.pattern)
             readout = describe(cue.pattern)
             signal = CueSignal(signal.id + 1, cue)
         }
-        val rest = OHaptics.REEL_MS - (SystemClock.uptimeMillis() - start)
-        if (rest > 0) delay(rest)
+        awaitUptime(start + OHaptics.REEL_MS)
         playing = false
         signal = CueSignal(signal.id + 1, null)
     }
