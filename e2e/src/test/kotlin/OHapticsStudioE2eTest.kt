@@ -38,9 +38,6 @@ class OHapticsStudioE2eTest {
     private lateinit var activity: androidx.activity.ComponentActivity
 
     @Before fun openStudio() {
-        // A real 60 Hz frame cadence: Bubbles/Balloons animate continuously, and with Robolectric's
-        // default frame delay their frame loop never lets virtual time move on.
-        org.robolectric.shadows.ShadowChoreographer.setFrameDelay(java.time.Duration.ofMillis(16))
         val app = RuntimeEnvironment.getApplication()
         shadowOf(app.getSystemService(Vibrator::class.java)).apply {
             setSupportedPrimitives((1..8).toList())
