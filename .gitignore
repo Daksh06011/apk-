@@ -1,2 +1,5 @@
 .tools/
 *.idsig
+e2e/build/
+e2e/.gradle/
+e2e/.kotlin/
