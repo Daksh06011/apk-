@@ -104,10 +104,10 @@ fun OHapticsStudio(view: View, still: Boolean) {
     Column(
         AppUi.glass(Modifier.fillMaxWidth(), colors, cardShape).padding(Space.l),
     ) {
-        Text("O-HAPTICS // STUDIO", color = colors.textTertiary, style = PtType.labelMono)
+        Text("TACTA // HAPTIC STUDIO", color = colors.textTertiary, style = PtType.labelMono)
         Spacer(Modifier.height(Space.xs))
-        Text("Feel it like OnePlus", color = colors.textPrimary, style = PtType.body)
-        AppUi.cardCaption("Six scenes and the full intro reel, tuned from the O-Haptics video.", currentComposer)
+        Text("Touch that talks back", color = colors.textPrimary, style = PtType.body)
+        AppUi.cardCaption("Six tactile scenes and a 20-second tour, tuned hit by hit.", currentComposer)
         Spacer(Modifier.height(Space.m))
 
         Row(
@@ -124,7 +124,7 @@ fun OHapticsStudio(view: View, still: Boolean) {
         Box(
             AppUi.recessed(Modifier.fillMaxWidth().height(260.dp), colors, stageShape)
                 .clip(stageShape)
-                .semantics { contentDescription = "O-Haptics stage: ${scene.label}" },
+                .semantics { contentDescription = "Tacta stage: ${scene.label}" },
         ) {
             val sceneSignal = signal.takeIf { it.cue == null || it.cue.scene == scene } ?: CueSignal(0, null)
             when (scene) {
@@ -188,7 +188,7 @@ private fun ReelButton(playing: Boolean, colors: PtColors, onClick: () -> Unit) 
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Text(
-            if (playing) "■  Stop reel" else "▶  Play O-Haptics reel",
+            if (playing) "■  Stop tour" else "▶  Play Tacta Tour",
             color = if (playing) colors.textPrimary else Color.White,
             style = PtType.caption,
         )

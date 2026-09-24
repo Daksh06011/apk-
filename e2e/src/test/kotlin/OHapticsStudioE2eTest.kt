@@ -57,14 +57,14 @@ class OHapticsStudioE2eTest {
         activity.composeRoot().clickExact(name)
         advance(300)
         fired.clear()
-        return activity.composeRoot().nodeWithText("O-Haptics stage: $name").boundsInWindow
+        return activity.composeRoot().nodeWithText("Tacta stage: $name").boundsInWindow
     }
 
     private fun Rect.at(fx: Float, fy: Float) = Offset(left + width * fx, top + height * fy)
 
     @Test fun studioSitsInPulseLab() {
         val root = activity.composeRoot()
-        listOf("Feel it like OnePlus", "Snap", "Knob", "Drop", "Roll", "Bubbles", "Balloons", "Play O-Haptics reel")
+        listOf("Touch that talks back", "Snap", "Knob", "Drop", "Roll", "Bubbles", "Balloons", "Play Tacta Tour")
             .forEach { root.nodeWithText(it) }
         activity.screenshot("studio-knob")
     }
@@ -171,7 +171,7 @@ class OHapticsStudioE2eTest {
 
     /** The whole intro, cue for cue, with the timing measured from the video's audio. */
     @Test fun reelReplaysTheVideoTimeline() {
-        activity.composeRoot().clickExact("▶  Play O-Haptics reel")
+        activity.composeRoot().clickExact("▶  Play Tacta Tour")
         val shots = mapOf(1200L to "snap", 4300L to "knob", 6500L to "drop", 8000L to "roll", 12800L to "bubbles", 17200L to "balloons")
         var t = 0L
         shots.forEach { (at, name) -> advance(at - t); t = at; activity.screenshot("reel-$name") }
@@ -182,7 +182,7 @@ class OHapticsStudioE2eTest {
         val t0 = fired.first().at
         OHaptics.reel.zip(fired).forEach { (cue, f) -> assertNear("cue @${cue.atMs}", cue.atMs.toLong(), f.at - t0) }
         assertTrue(fired.all { it.route == Route.COMPOSITION })
-        assertTrue("reel should have stopped", activity.composeRoot().allText().contains("▶  Play O-Haptics reel"))
+        assertTrue("reel should have stopped", activity.composeRoot().allText().contains("▶  Play Tacta Tour"))
     }
 
     @Test fun motorReceivesTheComposedPrimitives() {

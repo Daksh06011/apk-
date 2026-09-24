@@ -26,7 +26,7 @@ class ApkIntegrityTest {
         assertTrue(names.containsAll(original.dexNames()))
         assertEquals(original.dexNames().size + 1, names.size)
         val studio = patched.bytes("classes10.dex")
-        assertTrue("classes10.dex should hold O-Haptics Studio",
+        assertTrue("classes10.dex should hold Tacta",
             String(studio, Charsets.ISO_8859_1).contains("Lcom/phonetemp/app/ohaptics/StudioKt;"))
     }
 
