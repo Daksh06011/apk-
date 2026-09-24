@@ -7,3 +7,4 @@ e2e/.kotlin/
 .kotlin/
 build/
 */build/
+hs_err_pid*.log
