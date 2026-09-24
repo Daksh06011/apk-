@@ -107,5 +107,8 @@ tasks.test {
     // Robolectric fetches android-all jars itself; point it at the same Maven Central mirror.
     systemProperty("robolectric.dependency.repo.url", "https://maven-central.storage-download.googleapis.com/maven2")
     maxHeapSize = "4g"
+    // One JVM per test, like a fresh app launch: Compose's AndroidUiDispatcher.Main and
+    // GlobalSnapshotManager are process singletons bound to the first test's main looper.
+    forkEvery = 1
     testLogging { events("passed", "failed", "skipped"); exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL; showStandardStreams = true }
 }
