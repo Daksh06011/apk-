@@ -14,7 +14,8 @@
 //  - IR2JConverter: `if-gt 0, vX` (zero as FIRST operand) was emitted as `ifgt vX`, inverting
 //    loops such as Compose's MutableVector.contains. Patched copy of upstream (commit ecdd1b5).
 //  - FixInterfaceCalls: dex call sites don't say whether an invoke-static/-super owner is an
-//    interface; this ASM pass emits InterfaceMethodref where the JVM requires it.
+//    interface; this ASM pass emits InterfaceMethodref where the JVM requires it, and computes the
+//    StackMapTable frames dex2jar leaves out, so the JVM can verify the classes normally.
 val apk = extra["apkFile"] as File
 
 val dex2jar = configurations.create("dex2jar")
@@ -30,6 +31,7 @@ dependencies {
     add("composeCompile", "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.7.3")
     add("dex2jar", "de.femtopedia.dex2jar:dex-tools:2.4.38")
     add("androidAllLookup", "org.robolectric:android-all:14-robolectric-10818077") { isTransitive = false }
+    add("androidAllLookup", "org.jetbrains.kotlin:kotlin-stdlib:2.0.0") { isTransitive = false }
 }
 
 val dex2jarFix = tasks.register<JavaCompile>("dex2jarFix") {

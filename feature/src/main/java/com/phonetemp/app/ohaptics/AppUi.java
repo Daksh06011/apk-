@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.Shape;
 import com.phonetemp.app.ui.components.HomePartsKt;
 import com.phonetemp.app.ui.theme.DepthKt;
 import com.phonetemp.app.ui.theme.PtColors;
+import com.phonetemp.app.ui.theme.PtTheme;
 
 /**
  * Bridges to the app's top-level Kotlin helpers. The APK carries no META-INF/*.kotlin_module, so
@@ -13,6 +14,15 @@ import com.phonetemp.app.ui.theme.PtColors;
  */
 public final class AppUi {
     private AppUi() {}
+
+    /**
+     * PtTheme.colors is a @Composable getter, compiled to getColors(Composer, int). The APK keeps no
+     * CLASS-retention annotations, so Kotlin sees a plain property and would call a getColors() that
+     * doesn't exist (NoSuchMethodError at runtime). Pass the composer explicitly instead.
+     */
+    public static PtColors colors(Composer composer) {
+        return PtTheme.INSTANCE.getColors(composer, 6);
+    }
 
     public static Modifier glass(Modifier m, PtColors colors, Shape shape) {
         return DepthKt.glass(m, colors, shape);

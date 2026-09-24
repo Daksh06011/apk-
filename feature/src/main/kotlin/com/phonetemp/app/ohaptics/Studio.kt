@@ -44,7 +44,6 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.phonetemp.app.ui.theme.PtColors
-import com.phonetemp.app.ui.theme.PtTheme
 import com.phonetemp.app.ui.theme.PtType
 import com.phonetemp.app.ui.theme.Radius
 import com.phonetemp.app.ui.theme.Space
@@ -59,7 +58,7 @@ class CueSignal(val id: Int, val cue: OHaptics.Cue?)
  */
 @Composable
 fun OHapticsStudio(view: View, still: Boolean) {
-    val colors = PtTheme.colors
+    val colors = AppUi.colors(currentComposer)
     val player = remember(view) { HapticPlayer(view) }
     var scene by remember { mutableStateOf(Scene.KNOB) }
     var readout by remember { mutableStateOf("Touch the stage") }

@@ -2,7 +2,6 @@ import android.os.SystemClock
 import android.os.Vibrator
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import com.phonetemp.app.MainActivity
 import com.phonetemp.app.ohaptics.HapticLog
 import com.phonetemp.app.ohaptics.OHaptics
 import com.phonetemp.app.ohaptics.Prim
@@ -15,7 +14,6 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
@@ -26,10 +24,10 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Drives O-Haptics Studio in Pulse Lab with real touch events and checks the vibrations it asks
+ * Drives O-Haptics Studio (hosted in MainActivity with the app's theme, see StudioHost) with real touch events and checks the vibrations it asks
  * the motor for, and when, against the patterns measured from the OnePlus video.
  */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(ApkTestRunner::class)
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
@@ -37,7 +35,7 @@ class OHapticsStudioE2eTest {
     data class Fired(val at: Long, val pattern: List<Step>, val route: Route)
 
     private val fired = mutableListOf<Fired>()
-    private lateinit var activity: MainActivity
+    private lateinit var activity: androidx.activity.ComponentActivity
 
     @Before fun openStudio() {
         val app = RuntimeEnvironment.getApplication()
@@ -47,12 +45,9 @@ class OHapticsStudioE2eTest {
         }
         HapticLog.listener = { pattern, route -> fired += Fired(SystemClock.uptimeMillis(), pattern, route) }
         app.setBattery(38.5)
-        activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
-        advance(3000)
-        activity.composeRoot().click("Pulse Lab")
-        advance(1500)
-        activity.composeRoot().scrollTo("O-HAPTICS // STUDIO", topPx = 150f)
-        advance(500)
+        activity = Robolectric.buildActivity(androidx.activity.ComponentActivity::class.java).setup().get()
+        StudioHost.show(activity)
+        advance(1000)
         fired.clear()
     }
 

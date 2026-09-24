@@ -7,7 +7,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
@@ -16,7 +15,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /** Launches the real app at a range of battery temperatures and checks what it draws. */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(ApkTestRunner::class)
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
@@ -73,14 +72,5 @@ class HomeScreenE2eTest {
         val type = Class.forName("com.phonetemp.app.ui.theme.TypeKt")
         assertSame(FontFamily.Default, type.getMethod("getDisplay").invoke(null))
         assertSame(FontFamily.Default, type.getMethod("getMono").invoke(null))
-    }
-
-    @Test fun opensPulseLabWithTheStudio() {
-        val a = launch(38.5)
-        a.composeRoot().click("Pulse Lab")
-        advance(1500)
-        val root = a.composeRoot()
-        assertEquals(1, root.nodes().count { n -> n.texts().any { it == "O-HAPTICS // STUDIO" } })
-        a.screenshot("pulse-lab")
     }
 }

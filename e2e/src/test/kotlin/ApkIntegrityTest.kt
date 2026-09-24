@@ -30,6 +30,14 @@ class ApkIntegrityTest {
             String(studio, Charsets.ISO_8859_1).contains("Lcom/phonetemp/app/ohaptics/StudioKt;"))
     }
 
+    @Test fun pulseLabCallsTheStudio() {
+        // PulseLabScreen's examples column (classes5.dex) must reference StudioKt.OHapticsStudio.
+        val dex = String(patched.bytes("classes5.dex"), Charsets.ISO_8859_1)
+        assertTrue(dex.contains("Lcom/phonetemp/app/ohaptics/StudioKt;"))
+        assertTrue(dex.contains("OHapticsStudio"))
+        assertTrue(!String(original.bytes("classes5.dex"), Charsets.ISO_8859_1).contains("OHapticsStudio"))
+    }
+
     @Test fun manifestAndResourcesAreUntouched() {
         assertArrayEquals(original.bytes("AndroidManifest.xml"), patched.bytes("AndroidManifest.xml"))
         assertArrayEquals(original.bytes("resources.arsc"), patched.bytes("resources.arsc"))

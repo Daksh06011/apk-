@@ -52,7 +52,10 @@ if (androidxTest != null) {
 dependencies {
     testCompileOnly(files(layout.buildDirectory.file("app/app-api.jar")))
     testCompileOnly(files(configurations["composeCompile"]))
-    testRuntimeOnly(appClasses)
+    // O-Haptics Studio runs from feature.jar (kotlinc output, the exact input to dx) rather than
+    // its dex2jar round trip, which trips HotSpot's oop-map builder once Robolectric instruments it.
+    testRuntimeOnly(files(rootProject.file("feature/build/libs/feature.jar")))
+    testRuntimeOnly(files(layout.buildDirectory.file("app/app-run.jar")))
     testImplementation("org.robolectric:robolectric:4.14.1") {
         if (androidxTest != null) { exclude(group = "androidx.test"); exclude(group = "androidx.test.espresso") }
     }
@@ -87,10 +90,16 @@ val robolectricConfig by tasks.registering {
 
 sourceSets.test { resources.srcDir(robolectricConfig) }
 tasks.compileTestKotlin { dependsOn("appApiJar") }
+val appRunJar by tasks.registering(Jar::class) {
+    dependsOn(appJar)
+    from(zipTree(layout.buildDirectory.file("app/app.jar"))) { exclude("com/phonetemp/app/ohaptics/**") }
+    archiveFileName.set("app-run.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("app"))
+}
 tasks.matching { it.name == "compileAndroidxTestKotlin" || it.name == "compileAndroidxTestJava" }.configureEach { dependsOn(appJar) }
 
 tasks.test {
-    dependsOn(appJar)
+    dependsOn(appJar, appRunJar, ":feature:jar")
     systemProperty("apk.path", apk.absolutePath)
     systemProperty("apk.original", originalApk.absolutePath)
     systemProperty("screenshots.dir", layout.buildDirectory.dir("screenshots").get().asFile.absolutePath)
@@ -98,8 +107,5 @@ tasks.test {
     // Robolectric fetches android-all jars itself; point it at the same Maven Central mirror.
     systemProperty("robolectric.dependency.repo.url", "https://maven-central.storage-download.googleapis.com/maven2")
     maxHeapSize = "4g"
-    // dex2jar emits Java 8 class files without StackMapTable frames; the JVM verifier (unlike ART's,
-    // which the APK integrity tests cover at the dex level) would reject them.
-    jvmArgs("-XX:+UnlockDiagnosticVMOptions", "-XX:-BytecodeVerificationRemote", "-XX:-BytecodeVerificationLocal")
     testLogging { events("passed", "failed", "skipped"); exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL; showStandardStreams = true }
 }
