@@ -10,6 +10,7 @@ val apk = file(apkPath.get())
 val originalApk = file("../original/PhoneTemp-1.0.0-debug.apk")
 
 val dex2jar by configurations.creating
+val androidAll by configurations.creating
 val appClasses = files(layout.buildDirectory.file("app/app.jar"))
 
 // androidx.test (monitor + espresso-idling-resource) is only published on Google Maven. Where that
@@ -49,6 +50,7 @@ if (androidxTest != null) {
 
 dependencies {
     dex2jar("de.femtopedia.dex2jar:dex-tools:2.4.38")
+    androidAll("org.robolectric:android-all:14-robolectric-10818077") { isTransitive = false }
     testImplementation(appClasses)
     testImplementation("org.robolectric:robolectric:4.14.1") {
         if (androidxTest != null) { exclude(group = "androidx.test"); exclude(group = "androidx.test.espresso") }
@@ -87,6 +89,7 @@ val appJar by tasks.registering {
     dependsOn(extractDex, dex2jarFix)
     inputs.file(apk)
     inputs.files(dex2jarFix)
+    inputs.files(androidAll)
     val out = layout.buildDirectory.file("app/app.jar")
     outputs.file(out)
     doLast {
@@ -99,8 +102,9 @@ val appJar by tasks.registering {
                 args("-f", "-n", "--dont-sanitize-names", "-o", jars.resolve(dex.name + ".jar").path, dex.path)
             }
         }
+        val raw = dir.resolve("app-raw.jar")
         ant.withGroovyBuilder {
-            "jar"("destfile" to out.get().asFile.path) {
+            "jar"("destfile" to raw.path) {
                 jars.listFiles()!!.forEach { "zipfileset"("src" to it.path) {
                     "exclude"("name" to "META-INF/MANIFEST.MF")
                     // The app's bundled Kotlin stdlib: use the real kotlin-stdlib jar instead (the
@@ -109,6 +113,11 @@ val appJar by tasks.registering {
                 } }
                 "fileset"("dir" to dir.resolve("unzipped").path, "includes" to "META-INF/services/**")
             }
+        }
+        project.javaexec {
+            classpath = files(dex2jarFix) + dex2jar
+            mainClass.set("FixInterfaceCalls")
+            args(raw.path, out.get().asFile.path, *androidAll.files.map { it.path }.toTypedArray())
         }
     }
 }
