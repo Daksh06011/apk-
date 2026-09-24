@@ -2,6 +2,10 @@ package com.phonetemp.app.ohaptics
 
 import android.os.SystemClock
 import android.view.View
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -42,6 +46,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.phonetemp.app.ui.theme.PtColors
 import com.phonetemp.app.ui.theme.PtType
@@ -53,7 +58,7 @@ import kotlinx.coroutines.delay
 class CueSignal(val id: Int, val cue: OHaptics.Cue?)
 
 /**
- * O-Haptics Studio: the Pulse Lab card recreating OnePlus's O-Haptics intro. Called from
+ * Tacta haptic studio: the Pulse Lab card with six tactile scenes and a timed tour. Called from
  * PulseLabScreen's examples column (patched in by build.sh) with the screen's View.
  */
 @Composable
@@ -64,7 +69,7 @@ fun OHapticsStudio(view: View, still: Boolean) {
     var readout by remember { mutableStateOf("Touch the stage") }
     var reelRun by remember { mutableIntStateOf(0) }
     var playing by remember { mutableStateOf(false) }
-    var progress by remember { mutableFloatStateOf(0f) }
+    val progress = remember { mutableFloatStateOf(0f) }   // read only while drawing the bar
     var signal by remember { mutableStateOf(CueSignal(0, null)) }
     val playingNow by rememberUpdatedState(playing)
 
@@ -92,11 +97,11 @@ fun OHapticsStudio(view: View, still: Boolean) {
         signal = CueSignal(signal.id + 1, null)
     }
     LaunchedEffect(playing) {
-        if (!playing) { progress = 0f; return@LaunchedEffect }
+        if (!playing) { progress.floatValue = 0f; return@LaunchedEffect }
         val start = withFrameMillis { it }
         while (playing) {
             val now = withFrameMillis { it }
-            progress = ((now - start).toFloat() / OHaptics.REEL_MS).coerceIn(0f, 1f)
+            progress.floatValue = ((now - start).toFloat() / OHaptics.REEL_MS).coerceIn(0f, 1f)
         }
     }
 
@@ -126,18 +131,20 @@ fun OHapticsStudio(view: View, still: Boolean) {
                 .clip(stageShape)
                 .semantics { contentDescription = "Tacta stage: ${scene.label}" },
         ) {
-            val sceneSignal = signal.takeIf { it.cue == null || it.cue.scene == scene } ?: CueSignal(0, null)
-            when (scene) {
-                Scene.SNAP -> SnapScene(fire, sceneSignal, colors)
-                Scene.KNOB -> KnobScene(fire, sceneSignal, colors)
-                Scene.DROP -> DropScene(fire, sceneSignal, colors)
-                Scene.ROLL -> RollScene(fire, sceneSignal, colors)
-                Scene.BUBBLES -> BubbleScene(fire, sceneSignal, colors, still)
-                Scene.BALLOONS -> BalloonScene(fire, sceneSignal, colors, still)
+            Crossfade(targetState = scene, animationSpec = tween(260), label = "scene") { s ->
+                val sceneSignal = signal.takeIf { it.cue == null || it.cue.scene == s } ?: CueSignal(0, null)
+                when (s) {
+                    Scene.SNAP -> SnapScene(fire, sceneSignal, colors)
+                    Scene.KNOB -> KnobScene(fire, sceneSignal, colors)
+                    Scene.DROP -> DropScene(fire, sceneSignal, colors)
+                    Scene.ROLL -> RollScene(fire, sceneSignal, colors)
+                    Scene.BUBBLES -> BubbleScene(fire, sceneSignal, colors, still)
+                    Scene.BALLOONS -> BalloonScene(fire, sceneSignal, colors, still)
+                }
             }
         }
         Spacer(Modifier.height(Space.s))
-        Text(scene.hint, color = colors.textSecondary, style = PtType.caption)
+        Text(scene.hint, color = colors.textSecondary, style = PtType.caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(Space.m))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -150,15 +157,22 @@ fun OHapticsStudio(view: View, still: Boolean) {
                 color = colors.textTertiary,
                 style = PtType.mono,
                 modifier = Modifier.weight(1f).semantics { contentDescription = "Haptic readout: $readout" },
+                // Fixed two-line slot: a readout that wraps must never change the card's height.
+                minLines = 2,
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
-        if (playing) {
-            Spacer(Modifier.height(Space.s))
-            Canvas(Modifier.fillMaxWidth().height(4.dp)) {
-                drawRoundRect(colors.track, cornerRadius = CornerRadius(size.height))
-                drawRoundRect(OneBlue, size = Size(size.width * progress, size.height), cornerRadius = CornerRadius(size.height))
-            }
+        // The tour bar always keeps its slot (and only redraws, never recomposes the card).
+        Spacer(Modifier.height(Space.s))
+        val barAlpha by animateFloatAsState(if (playing) 1f else 0f, tween(200), label = "bar")
+        Canvas(Modifier.fillMaxWidth().height(4.dp)) {
+            if (barAlpha == 0f) return@Canvas
+            drawRoundRect(colors.track.copy(alpha = barAlpha), cornerRadius = CornerRadius(size.height))
+            drawRoundRect(
+                OneBlue.copy(alpha = barAlpha), size = Size(size.width * progress.floatValue, size.height),
+                cornerRadius = CornerRadius(size.height),
+            )
         }
     }
 }
@@ -168,12 +182,16 @@ private fun SceneChip(label: String, selected: Boolean, colors: PtColors, onClic
     Box(
         Modifier
             .clip(RoundedCornerShape(50))
-            .background(if (selected) OneBlue else colors.plate)
+            .background(animateColorAsState(if (selected) OneBlue else colors.plate, tween(180), label = "chip").value)
             .semantics { this.selected = selected; role = Role.Tab }
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
     ) {
-        Text(label, color = if (selected) Color.White else colors.textSecondary, style = PtType.caption)
+        Text(
+            label,
+            color = animateColorAsState(if (selected) Color.White else colors.textSecondary, tween(180), label = "chipText").value,
+            style = PtType.caption,
+        )
     }
 }
 

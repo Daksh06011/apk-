@@ -172,7 +172,7 @@ class OHapticsStudioE2eTest {
     /** The whole intro, cue for cue, with the timing measured from the video's audio. */
     @Test fun reelReplaysTheVideoTimeline() {
         activity.composeRoot().clickExact("▶  Play Tacta Tour")
-        val shots = mapOf(1200L to "snap", 4300L to "knob", 6500L to "drop", 8000L to "roll", 12800L to "bubbles", 17200L to "balloons")
+        val shots = mapOf(900L to "snap-mid", 3250L to "snap-done", 4300L to "knob", 6500L to "drop-falling", 7900L to "roll-moving", 8600L to "roll-end", 12800L to "bubbles", 17200L to "balloons")
         var t = 0L
         shots.forEach { (at, name) -> advance(at - t); t = at; activity.screenshot("reel-$name") }
         advance(OHaptics.REEL_MS + 500L - t)

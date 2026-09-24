@@ -86,7 +86,7 @@ internal fun KnobScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: Pt
     var angle by remember { mutableFloatStateOf(-90f) }
     var detentIdx by remember { mutableStateOf(floor(-90f / DETENT).toInt()) }
     val scope = rememberCoroutineScope()
-    val spin = remember { Animatable(0f) }
+    val spin = remember { Animatable(-90f) }
 
     fun moved(to: Float) {
         angle = to
@@ -94,10 +94,15 @@ internal fun KnobScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: Pt
         if (idx != detentIdx) { detentIdx = idx; fire(OHaptics.detent) }
     }
 
+    // Tour: one detent per measured tick. Launched in the scene's scope so the next cue (70-80 ms
+    // later) retargets the spin instead of cancelling it mid-motion.
+    var tourTarget by remember { mutableStateOf<Float?>(null) }
     LaunchedEffect(signal.id) {
-        if (signal.cue?.scene == Scene.KNOB) {   // reel: one detent per measured tick
-            spin.snapTo(angle)
-            spin.animateTo(angle + DETENT, tween(60, easing = EaseOut)) { angle = value }
+        if (signal.cue?.scene != Scene.KNOB) { tourTarget = null; return@LaunchedEffect }
+        val target = (tourTarget ?: angle) + DETENT
+        tourTarget = target
+        scope.launch {
+            spin.animateTo(target, tween(90, easing = EaseOut)) { angle = value }
             detentIdx = floor(angle / DETENT).toInt()
         }
     }
@@ -170,8 +175,9 @@ internal fun DropScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: Pt
         busy = false
     }
 
+    // Tour: start on the lift cue only; the impact/bounce cues must not restart (and freeze) it.
     LaunchedEffect(signal.id) {
-        if (signal.cue?.scene == Scene.DROP && signal.cue.pattern == OHaptics.dropLift) drop(haptics = false)
+        if (signal.cue?.scene == Scene.DROP && signal.cue.pattern == OHaptics.dropLift && !busy) scope.launch { drop(haptics = false) }
     }
 
     StageCanvas(Modifier.pointerInput(Unit) { detectTapGestures { if (!busy) scope.launch { drop(true) } } }) {
@@ -216,9 +222,10 @@ internal fun RollScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: Pt
         if (!haptics) { atEdge = true; lastStep = floor(target / GROOVE).toInt() }
     }
 
+    // Tour: start on the first roll cue only; the texture cues every 70 ms must not restart it.
     LaunchedEffect(signal.id) {
         val cue = signal.cue
-        if (cue?.scene == Scene.ROLL && cue.atMs == OHaptics.reel.first { it.scene == Scene.ROLL }.atMs) rollAcross(haptics = false)
+        if (cue?.scene == Scene.ROLL && cue.atMs == OHaptics.reel.first { it.scene == Scene.ROLL }.atMs) scope.launch { rollAcross(haptics = false) }
     }
 
     StageCanvas(
@@ -266,9 +273,10 @@ private class Ripple(val x: Float, val y: Float, val r: Float, val born: Long)
 
 @Composable
 internal fun BubbleScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: PtColors, still: Boolean) {
-    val bubbles = remember { mutableStateListOf<Bubble>().apply { repeat(7) { add(newBubble(it, spread = true)) } } }
+    val bubbles = remember { mutableStateListOf<Bubble>().apply { repeat(7) { add(newBubble(spread = true)) } } }
     val ripples = remember { mutableStateListOf<Ripple>() }
     var frame by remember { mutableLongStateOf(0L) }
+    var lastSpawn by remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(still) {
         var prev = withFrameMillis { it }
@@ -278,10 +286,10 @@ internal fun BubbleScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: 
             prev = now
             if (!still) bubbles.forEach { b ->
                 b.y -= dt * (0.05f + 0.10f * (1f - b.r))
-                if (b.y < -0.2f) { b.y = 1.2f; b.x = 0.1f + 0.8f * ((b.phase * 7.3f) % 1f) }
+                if (b.y < -0.25f) { b.y = 1.15f + 0.3f * bubbleRandom.nextFloat(); b.x = 0.12f + 0.76f * bubbleRandom.nextFloat() }
             }
             ripples.removeAll { now - it.born > 450 }
-            if (bubbles.size < 4) bubbles.add(newBubble(bubbles.size + ripples.size + now.toInt()))
+            if (bubbles.size < 5 && now - lastSpawn > 450) { bubbles.add(newBubble()); lastSpawn = now }
             frame = now
         }
     }
@@ -319,22 +327,41 @@ internal fun BubbleScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: 
         bubbles.forEach { b ->
             val c = Offset(b.x * size.width + sin(frame / 700f + b.phase * 6f) * 6f, b.y * size.height)
             val r = unit * (0.4f + b.r)
-            val tint = if (b.mint) Color(0xFF55D6B0) else Color(0xFFF2D25A)
-            drawCircle(Brush.radialGradient(listOf(tint.copy(alpha = 0.15f), tint.copy(alpha = 0.55f)), c, r), r, c)
-            drawCircle(Color.White.copy(alpha = 0.55f), r, c, style = Stroke(1.5f))
-            drawCircle(Color.White.copy(alpha = 0.7f), r * 0.18f, c + Offset(-r * 0.4f, -r * 0.4f))
+            val tint = if (b.mint) Color(0xFF4FD8B4) else Color(0xFFF4D35E)
+            drawCircle(Brush.radialGradient(listOf(tint.copy(alpha = 0.06f), tint.copy(alpha = 0.22f), tint.copy(alpha = 0.62f)), c, r), r, c)
+            drawCircle(
+                Brush.sweepGradient(listOf(Color(0x99FFFFFF), tint.copy(alpha = 0.7f), Color(0x66B8A4FF), tint.copy(alpha = 0.7f), Color(0x99FFFFFF)), c),
+                r, c, style = Stroke(r * 0.05f + 1f),
+            )
+            drawArc(Color.White.copy(alpha = 0.55f), 200f, 60f, false, c - Offset(r * 0.72f, r * 0.72f), Size(r * 1.44f, r * 1.44f), style = Stroke(r * 0.07f, cap = StrokeCap.Round))
+            drawCircle(Color.White.copy(alpha = 0.8f), r * 0.10f, c + Offset(-r * 0.42f, -r * 0.46f))
         }
         ripples.forEach { rp ->
             val t = ((frame - rp.born) / 450f).coerceIn(0f, 1f)
             val c = Offset(rp.x * size.width, rp.y * size.height)
-            drawCircle(Color.White.copy(alpha = 0.6f * (1 - t)), unit * (0.4f + rp.r) * (1 + t * 0.6f), c, style = Stroke(3f * (1 - t) + 0.5f))
+            val rr = unit * (0.4f + rp.r)
+            drawCircle(Color.White.copy(alpha = 0.5f * (1 - t)), rr * (1 + t * 0.5f), c, style = Stroke(2.5f * (1 - t) + 0.5f))
+            for (i in 0 until 8) {
+                val a = Math.toRadians(i * 45.0 + rp.r * 90)
+                val d = rr * (0.9f + t * 0.8f)
+                drawCircle(Color.White.copy(alpha = 0.7f * (1 - t)), 2.5f * (1 - t) + 1f, c + Offset(cos(a).toFloat() * d, sin(a).toFloat() * d))
+            }
         }
     }
 }
 
-private fun newBubble(seed: Int, spread: Boolean = false): Bubble {
-    val g = ((seed * 0.61803f) % 1f + 1f) % 1f
-    return Bubble(0.12f + 0.76f * g, if (spread) 0.15f + 0.8f * ((seed * 0.37f) % 1f) else 1.15f, 0.15f + 0.6f * ((seed * 0.29f + 0.3f) % 1f), g, seed % 3 != 1)
+private val bubbleRandom = java.util.Random()
+
+/** A bubble at a random column; [spread] scatters it over the stage instead of below it. */
+private fun newBubble(spread: Boolean = false): Bubble {
+    val rnd = bubbleRandom
+    return Bubble(
+        x = 0.12f + 0.76f * rnd.nextFloat(),
+        y = if (spread) 0.15f + 0.8f * rnd.nextFloat() else 1.1f + 0.3f * rnd.nextFloat(),
+        r = 0.15f + 0.6f * rnd.nextFloat(),
+        phase = rnd.nextFloat(),
+        mint = rnd.nextInt(3) != 0,
+    )
 }
 
 // ---------------------------------------------------------------- balloons
@@ -444,8 +471,9 @@ internal fun SnapScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: Pt
         }
     }
 
+    // Tour: start on the first cue only; the following snap cues must not restart (and freeze) it.
     LaunchedEffect(signal.id) {
-        if (signal.cue?.scene == Scene.SNAP && signal.cue.atMs == 0) assemble(haptics = false)
+        if (signal.cue?.scene == Scene.SNAP && signal.cue.atMs == 0) scope.launch { assemble(haptics = false) }
     }
 
     StageCanvas(
@@ -458,37 +486,44 @@ internal fun SnapScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: Pt
         },
     ) {
         val c = center
-        val r = min(size.width, size.height) * 0.28f
+        val r = min(size.width, size.height) * 0.30f
         val now = t.value
         fun arrive(at: Int): Float = FastOutSlowInEasing.transform(((now - (at - 260)) / 260f).coerceIn(0f, 1f))
-        // Outer ring: four quarter arcs flying in from the corners (the four first snaps).
+        val done = now >= SNAP_END
+        if (done) tickRing(c, r * 1.30f, colors, -90f)
+        // Base ring: four porcelain quarters gliding in from the corners (the first four snaps).
         listOf(0, 85, 245, 340).forEachIndexed { i, at ->
             val k = arrive(at)
             val dir = Offset(cos(Math.toRadians(45.0 + 90 * i)).toFloat(), sin(Math.toRadians(45.0 + 90 * i)).toFloat())
-            val off = dir * ((1 - k) * r * 1.6f)
-            rotate((1 - k) * 70f * (if (i % 2 == 0) 1 else -1), c + off) {
+            val off = dir * ((1 - k) * r * 0.55f)
+            rotate((1 - k) * 35f * (if (i % 2 == 0) 1 else -1), c + off) {
                 drawArc(
-                    if (k >= 1f) Porcelain else Porcelain.copy(alpha = 0.55f + 0.45f * k),
-                    90f * i + 3f, 84f, false, c + off - Offset(r * 1.15f, r * 1.15f), Size(r * 2.3f, r * 2.3f),
-                    style = Stroke(r * 0.22f, cap = StrokeCap.Round),
+                    colors.plate.copy(alpha = 0.35f + 0.65f * k),
+                    90f * i + (1 - k) * 4f, 90f - (1 - k) * 8f, false,
+                    c + off - Offset(r * 1.14f, r * 1.14f), Size(r * 2.28f, r * 2.28f),
+                    style = Stroke(r * 0.20f, cap = if (k >= 1f) StrokeCap.Butt else StrokeCap.Round),
                 )
             }
         }
-        // Inner collar: two blue halves (the next pair of snaps).
+        if (arrive(340) >= 1f) drawCircle(colors.line, r * 1.24f, c, style = Stroke(2f))
+        // Collar: two blue halves sliding together (the next pair of snaps).
         listOf(870, 985).forEachIndexed { i, at ->
             val k = arrive(at)
-            val off = Offset(if (i == 0) -1f else 1f, 0f) * ((1 - k) * r * 1.4f)
-            drawArc(OneBlueDeep, 180f * i + 92f, 176f, false, c + off - Offset(r * 0.98f, r * 0.98f), Size(r * 1.96f, r * 1.96f), style = Stroke(r * 0.12f))
+            val off = Offset(if (i == 0) -1f else 1f, 0f) * ((1 - k) * r * 0.5f)
+            drawArc(
+                OneBlueDeep.copy(alpha = 0.3f + 0.7f * k), 180f * i + 90f, 180f, false,
+                c + off - Offset(r * 1.0f, r * 1.0f), Size(r * 2f, r * 2f), style = Stroke(r * 0.09f),
+            )
         }
-        // The dial drops in (settle thuds at 1935/2010) and its notch clicks round (2825/2895).
-        val drop = EaseIn.transform(((now - 1650) / 285f).coerceIn(0f, 1f))
+        // The dial drops in (settle thuds at 1935/2010), then its notch clicks round (2825/2895).
         if (now > 1650) {
-            val lift = (1 - drop) * r * 0.9f
-            val wobble = if (now in 1935f..2150f) sin((now - 1935) / 25f) * r * 0.02f * (1 - (now - 1935) / 215f) else 0f
-            val notch = -140f + 50f * FastOutSlowInEasing.transform(((now - 2600) / 295f).coerceIn(0f, 1f))
-            blueDial(c + Offset(0f, -lift + wobble), r * (0.82f + 0.18f * (1 - drop)), notch)
+            val drop = EaseIn.transform(((now - 1650) / 285f).coerceIn(0f, 1f))
+            val settle = if (now in 1935f..2200f) sin((now - 1935) / 22f) * r * 0.025f * (1 - (now - 1935) / 265f) else 0f
+            val notch = -150f + 60f * FastOutSlowInEasing.transform(((now - 2600) / 295f).coerceIn(0f, 1f))
+            blueDial(c + Offset(0f, -(1 - drop) * r * 0.5f + settle), r * (0.86f + 0.14f * (1 - drop)), notch)
+        } else if (now == 0f) {
+            drawCircle(OneBlue.copy(alpha = 0.18f), r * 0.86f, c)   // ghost of the dial to come
         }
-        if (now >= SNAP_END) tickRing(c, r * 1.42f, colors, -90f)
     }
 }
 
