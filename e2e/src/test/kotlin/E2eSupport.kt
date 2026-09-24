@@ -92,3 +92,46 @@ fun Activity.screenshot(name: String): Bitmap {
 }
 
 val SemanticsNode.bounds: Rect get() = boundsInRoot
+
+// ------------------------------------------------------------------ touch + scrolling
+
+fun Activity.touch(action: Int, p: androidx.compose.ui.geometry.Offset, downTime: Long) {
+    val ev = android.view.MotionEvent.obtain(downTime, android.os.SystemClock.uptimeMillis(), action, p.x, p.y, 0)
+    window.decorView.dispatchTouchEvent(ev)
+    ev.recycle()
+}
+
+fun Activity.tap(p: androidx.compose.ui.geometry.Offset) {
+    val down = android.os.SystemClock.uptimeMillis()
+    touch(android.view.MotionEvent.ACTION_DOWN, p, down)
+    advance(40)
+    touch(android.view.MotionEvent.ACTION_UP, p, down)
+    advance(16)
+}
+
+/** Drags through [points], one move per [stepMs]. */
+fun Activity.drag(points: List<androidx.compose.ui.geometry.Offset>, stepMs: Long = 16, release: Boolean = true) {
+    val down = android.os.SystemClock.uptimeMillis()
+    touch(android.view.MotionEvent.ACTION_DOWN, points.first(), down)
+    for (p in points.drop(1)) { advance(stepMs); touch(android.view.MotionEvent.ACTION_MOVE, p, down) }
+    if (release) { advance(8); touch(android.view.MotionEvent.ACTION_UP, points.last(), down) }
+    advance(16)
+}
+
+/** Scrolls the nearest scrollable ancestor so the node containing [sub] sits near [topPx]. */
+fun RootForTest.scrollTo(sub: String, topPx: Float = 250f) {
+    val target = nodeWithText(sub)
+    var n: SemanticsNode? = target
+    while (n != null && n.config.getOrNull(SemanticsActions.ScrollBy) == null) n = n.parent
+    val scroll = n?.config?.getOrNull(SemanticsActions.ScrollBy)?.action ?: error("'$sub' has no scrollable ancestor")
+    scroll.invoke(0f, target.boundsInWindow.top - topPx)
+}
+
+val SemanticsNode.center get() = boundsInWindow.center
+
+/** Clicks the nearest clickable node at or above the node whose text is exactly [text]. */
+fun RootForTest.clickExact(text: String) {
+    var n: SemanticsNode? = nodes().firstOrNull { it.texts().contains(text) } ?: error("No node '$text'. On screen: ${allText()}")
+    while (n != null && n.config.getOrNull(SemanticsActions.OnClick) == null) n = n.parent
+    (n?.config?.getOrNull(SemanticsActions.OnClick)?.action ?: error("'$text' is not clickable")).invoke()
+}

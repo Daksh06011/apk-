@@ -37,5 +37,15 @@ body = sig + """
 """
 s = s[:i] + body + s[j:]
 open(p, "w").write(s)
+# 3) Pulse Lab: put O-Haptics Studio (feature/, shipped as classes10.dex) first in the examples
+#    column, with the same (view, still) arguments the other examples get.
+p = f"{root}/smali_classes5/com/phonetemp/app/ui/screens/PulseLabScreenKt$PulseLabScreen$2$4.smali"
+s = open(p).read()
+toggle = "    invoke-static {v4, v7, v10, v0}, Lcom/phonetemp/app/ui/screens/PulseLabScreenKt;->access$ToggleExample(Landroid/view/View;ZLandroidx/compose/runtime/Composer;I)V"
+assert s.count(toggle) == 1
+studio = "    invoke-static {v4, v7, v10, v0}, Lcom/phonetemp/app/ohaptics/StudioKt;->OHapticsStudio(Landroid/view/View;ZLandroidx/compose/runtime/Composer;I)V\n\n"
+s = s.replace(toggle, studio + toggle)
+open(p, "w").write(s)
+
 import os; shutil.copy(os.path.join(os.path.dirname(__file__), "GradientRing.smali"), f"{root}/smali_classes6/com/phonetemp/app/ui/components/GradientRing.smali")
 print("patched")

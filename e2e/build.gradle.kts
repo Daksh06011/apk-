@@ -3,14 +3,15 @@
 // There is no app source, so the APK itself is the test subject: its dex files are converted to
 // JVM bytecode with dex2jar and run under Robolectric (real Android framework + native graphics),
 // launching MainActivity, feeding it battery broadcasts and rendering real frames.
-plugins { kotlin("jvm") version "2.0.21" }
+plugins { kotlin("jvm") }
 
 val apkPath = providers.gradleProperty("apk").orElse("../dist/PhoneTemp-1.0.1-debug.apk")
 val apk = file(apkPath.get())
 val originalApk = file("../original/PhoneTemp-1.0.0-debug.apk")
 
-val dex2jar by configurations.creating
-val androidAll by configurations.creating
+extra["apkFile"] = apk
+apply(from = rootProject.file("gradle/apk-classes.gradle.kts"))
+val appJar = tasks.named("appJar")
 val appClasses = files(layout.buildDirectory.file("app/app.jar"))
 
 // androidx.test (monitor + espresso-idling-resource) is only published on Google Maven. Where that
@@ -49,9 +50,9 @@ if (androidxTest != null) {
 }
 
 dependencies {
-    dex2jar("de.femtopedia.dex2jar:dex-tools:2.4.38")
-    androidAll("org.robolectric:android-all:14-robolectric-10818077") { isTransitive = false }
-    testImplementation(appClasses)
+    testCompileOnly(files(layout.buildDirectory.file("app/app-api.jar")))
+    testCompileOnly(files(configurations["composeCompile"]))
+    testRuntimeOnly(appClasses)
     testImplementation("org.robolectric:robolectric:4.14.1") {
         if (androidxTest != null) { exclude(group = "androidx.test"); exclude(group = "androidx.test.espresso") }
     }
@@ -67,60 +68,6 @@ dependencies {
 }
 
 kotlin { jvmToolchain(21) }
-
-// dex2jar 2.4.38 mistranslates `if-gt 0, vX` (zero as FIRST operand) into `ifgt vX`, which breaks
-// loops such as Compose's MutableVector.contains. dex2jar-fix/ is upstream IR2JConverter.java
-// (commit ecdd1b5) with that comparison mirrored; it is compiled and put ahead of the stock class.
-val dex2jarFix by tasks.registering(JavaCompile::class) {
-    source(fileTree("dex2jar-fix"))
-    classpath = dex2jar
-    destinationDirectory.set(layout.buildDirectory.dir("dex2jar-fix"))
-    options.release.set(11)
-    options.compilerArgs.add("-nowarn")
-}
-
-val extractDex by tasks.registering(Copy::class) {
-    from(zipTree(apk)) { include("classes*.dex", "META-INF/services/**") }
-    into(layout.buildDirectory.dir("app/unzipped"))
-}
-
-// dex -> one jar of JVM classes (app + androidx + kotlinx), plus META-INF/services for coroutines.
-val appJar by tasks.registering {
-    dependsOn(extractDex, dex2jarFix)
-    inputs.file(apk)
-    inputs.files(dex2jarFix)
-    inputs.files(androidAll)
-    val out = layout.buildDirectory.file("app/app.jar")
-    outputs.file(out)
-    doLast {
-        val dir = layout.buildDirectory.dir("app").get().asFile
-        val jars = dir.resolve("jars").apply { deleteRecursively(); mkdirs() }
-        dir.resolve("unzipped").listFiles { f -> f.name.endsWith(".dex") }!!.sorted().forEach { dex ->
-            project.javaexec {
-                classpath = files(dex2jarFix) + dex2jar
-                mainClass.set("com.googlecode.dex2jar.tools.Dex2jarCmd")
-                args("-f", "-n", "--dont-sanitize-names", "-o", jars.resolve(dex.name + ".jar").path, dex.path)
-            }
-        }
-        val raw = dir.resolve("app-raw.jar")
-        ant.withGroovyBuilder {
-            "jar"("destfile" to raw.path) {
-                jars.listFiles()!!.forEach { "zipfileset"("src" to it.path) {
-                    "exclude"("name" to "META-INF/MANIFEST.MF")
-                    // The app's bundled Kotlin stdlib: use the real kotlin-stdlib jar instead (the
-                    // dex2jar'd inline-function bodies crash the Kotlin compiler when inlined).
-                    "exclude"("name" to "kotlin/**")
-                } }
-                "fileset"("dir" to dir.resolve("unzipped").path, "includes" to "META-INF/services/**")
-            }
-        }
-        project.javaexec {
-            classpath = files(dex2jarFix) + dex2jar
-            mainClass.set("FixInterfaceCalls")
-            args(raw.path, out.get().asFile.path, *androidAll.files.map { it.path }.toTypedArray())
-        }
-    }
-}
 
 // Robolectric binary-resources config: real resources.arsc from the APK + decoded manifest.
 val robolectricConfig by tasks.registering {
@@ -139,7 +86,7 @@ val robolectricConfig by tasks.registering {
 }
 
 sourceSets.test { resources.srcDir(robolectricConfig) }
-tasks.compileTestKotlin { dependsOn(appJar) }
+tasks.compileTestKotlin { dependsOn("appApiJar") }
 tasks.matching { it.name == "compileAndroidxTestKotlin" || it.name == "compileAndroidxTestJava" }.configureEach { dependsOn(appJar) }
 
 tasks.test {

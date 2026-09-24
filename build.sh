@@ -2,6 +2,7 @@
 # Rebuilds dist/PhoneTemp-1.0.1-debug.apk from original/PhoneTemp-1.0.0-debug.apk:
 #   - all text uses the device system font (FontFamily.Default) instead of bundled Manrope / DM Mono
 #   - the thermal ring fill is a temperature colour ramp (cool -> normal -> warm -> hot -> critical)
+#   - Pulse Lab gains O-Haptics Studio (feature/), haptics recreated from OnePlus's O-Haptics video
 set -euo pipefail
 cd "$(dirname "$0")"
 TOOLS=.tools; mkdir -p "$TOOLS" dist
@@ -16,6 +17,14 @@ python3 patch/apply.py "$WORK/src"
 # original APK (minSdk 26 -> dex 038).
 sed -i "s/^sdkInfo:.*/sdkInfo:\n  minSdkVersion: '26'\n  targetSdkVersion: '35'/" "$WORK/src/apktool.yml"
 java -jar $TOOLS/apktool.jar b "$WORK/src" -o "$WORK/unsigned.apk"
+# O-Haptics Studio (feature/): Kotlin/Compose compiled against the app, dexed, added as classes10.dex.
+gradle --no-daemon -q :feature:dex
+python3 - "$WORK/unsigned.apk" feature/build/dex/classes10.dex <<'PY'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "a", zipfile.ZIP_DEFLATED) as z:
+    assert "classes10.dex" not in z.namelist()
+    z.write(sys.argv[2], "classes10.dex")
+PY
 java -jar $TOOLS/signer.jar -a "$WORK/unsigned.apk" -o "$WORK/signed"
 cp "$WORK"/signed/*-debugSigned.apk dist/PhoneTemp-1.0.1-debug.apk
 rm -rf "$WORK"
