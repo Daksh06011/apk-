@@ -39,6 +39,9 @@ fun advance(ms: Long) {
     val looper = shadowOf(Looper.getMainLooper())
     var left = ms
     while (left > 0) {
+        // Compose's GlobalSnapshotManager starts once per JVM on the first test's main looper; later
+        // tests would never see state writes made outside composition (clicks, touches) applied.
+        androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
         val step = minOf(16L, left)
         looper.idleFor(Duration.ofMillis(step))
         left -= step
