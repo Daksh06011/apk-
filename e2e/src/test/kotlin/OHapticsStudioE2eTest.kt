@@ -180,6 +180,41 @@ class OHapticsStudioE2eTest {
         OHaptics.assembly.zip(fired).forEach { (want, got) -> assertNear("snap", want.first.toLong(), got.at - t0) }
     }
 
+    /**
+     * During the tour the scenes must actually animate, not just vibrate: snapshots of the stage a
+     * few hundred ms apart inside Snap, Drop and Roll must differ, and every cue up to there fires
+     * on time. (Stops before Bubbles; see the harness note below.)
+     */
+    @Test fun tourAnimatesSnapDropAndRoll() {
+        activity.composeRoot().clickExact("▶  Play Tacta Tour")
+        val start = SystemClock.uptimeMillis()
+        fun stageAt(ms: Long, name: String): IntArray {
+            advance(start + ms - SystemClock.uptimeMillis())
+            val r = activity.composeRoot().nodeWithText("Tacta stage").boundsInWindow
+            val bmp = activity.screenshot("tour-$name")
+            val px = IntArray((r.width.toInt() - 8) * (r.height.toInt() - 8))
+            bmp.getPixels(px, 0, r.width.toInt() - 8, r.left.toInt() + 4, r.top.toInt() + 4, r.width.toInt() - 8, r.height.toInt() - 8)
+            return px
+        }
+        fun changed(a: IntArray, b: IntArray) = a.indices.count { a[it] != b[it] }.toFloat() / a.size
+        val pairs = listOf(
+            "snap" to (400L to 1500L), "snap-settle" to (1800L to 2600L),
+            "drop" to (6250L to 6550L), "roll" to (7500L to 8200L),
+        )
+        pairs.forEach { (name, t) ->
+            val a = stageAt(t.first, "$name-a"); val b = stageAt(t.second, "$name-b")
+            val moved = changed(a, b)
+            println("tour $name: ${"%.1f".format(moved * 100)}% of the stage changed")
+            assertTrue("$name should be animating during the tour ($moved)", moved > 0.01f)
+        }
+        advance(start + 9000 - SystemClock.uptimeMillis())
+        val due = OHaptics.reel.filter { it.atMs < 9000 }
+        assertEquals(due.map { it.pattern }, fired.take(due.size).map { it.pattern })
+        due.zip(fired).forEach { (cue, f) -> assertNear("cue @${cue.atMs}", cue.atMs.toLong(), f.at - start) }
+        activity.composeRoot().clickExact("■  Stop tour")
+        advance(300)
+    }
+
     /** The whole intro, cue for cue, with the timing measured from the video's audio. */
     // Harness limit: under the dex2jar'd Compose runtime, the continuously animating scenes
     // (Bubbles, Balloons, and the tour, which passes through them) end up with a circular state-record

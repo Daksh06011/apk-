@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -52,10 +53,31 @@ import com.phonetemp.app.ui.theme.PtColors
 import com.phonetemp.app.ui.theme.PtType
 import com.phonetemp.app.ui.theme.Radius
 import com.phonetemp.app.ui.theme.Space
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 
-/** What the stage is currently being told by the reel: [id] increments on every cue. */
-class CueSignal(val id: Int, val cue: OHaptics.Cue?)
+/** One tour cue as delivered to the scenes, stamped with when it was sent. */
+class CueSignal(val cue: OHaptics.Cue, val sentAt: Long) {
+    /** Replayed cues (a scene composed just after its first cue) count only while still fresh. */
+    val fresh: Boolean get() = SystemClock.uptimeMillis() - sentAt < 250
+}
+
+/**
+ * Tour cues reach the scenes as events, not as composition state: a cue starts or advances a
+ * scene's animation and nothing recomposes. (As state, every cue - every 70 ms during Roll - made
+ * the whole card recompose, and the dropped frames showed as stutter in the tour only.) Replay of
+ * one covers a scene that composes a frame after its first cue.
+ */
+typealias Cues = SharedFlow<CueSignal>
+
+/** Runs [handle] for each fresh cue addressed to [scene], for as long as the scene is on stage. */
+@Composable
+internal fun OnCue(cues: Cues, scene: Scene, handle: (OHaptics.Cue) -> Unit) {
+    val current by rememberUpdatedState(handle)
+    LaunchedEffect(cues) {
+        cues.collect { sig -> if (sig.cue.scene == scene && sig.fresh) current(sig.cue) }
+    }
+}
 
 /**
  * Tacta haptic studio: the Pulse Lab card with six tactile scenes and a timed tour. Called from
@@ -66,16 +88,16 @@ fun OHapticsStudio(view: View, still: Boolean) {
     val colors = AppUi.colors(currentComposer)
     val player = remember(view) { HapticPlayer(view) }
     var scene by remember { mutableStateOf(Scene.KNOB) }
-    var readout by remember { mutableStateOf("Touch the stage") }
+    val readout = remember { mutableStateOf("Touch the stage") }   // read only by HapticReadout
     var reelRun by remember { mutableIntStateOf(0) }
     var playing by remember { mutableStateOf(false) }
     val progress = remember { mutableFloatStateOf(0f) }   // read only while drawing the bar
-    var signal by remember { mutableStateOf(CueSignal(0, null)) }
+    val cues = remember { MutableSharedFlow<CueSignal>(replay = 1, extraBufferCapacity = 64) }
     val playingNow by rememberUpdatedState(playing)
 
     // Scene gestures fire through here; while the reel runs, the reel alone drives the motor.
     val fire: (List<Step>) -> Unit = remember(player) {
-        { pattern -> if (!playingNow) { player.play(pattern); readout = describe(pattern) } }
+        { pattern -> if (!playingNow) { player.play(pattern); readout.value = describe(pattern) } }
     }
 
     LaunchedEffect(reelRun) {
@@ -87,12 +109,11 @@ fun OHapticsStudio(view: View, still: Boolean) {
             awaitUptime(start + cue.atMs)
             while (switches.isNotEmpty() && switches.first().first <= cue.atMs) scene = switches.removeAt(0).second
             player.play(cue.pattern)
-            readout = describe(cue.pattern)
-            signal = CueSignal(signal.id + 1, cue)
+            readout.value = describe(cue.pattern)
+            cues.tryEmit(CueSignal(cue, SystemClock.uptimeMillis()))
         }
         awaitUptime(start + OHaptics.REEL_MS)
         playing = false
-        signal = CueSignal(signal.id + 1, null)
     }
     LaunchedEffect(playing) {
         if (!playing) { progress.floatValue = 0f; return@LaunchedEffect }
@@ -130,14 +151,13 @@ fun OHapticsStudio(view: View, still: Boolean) {
                 .semantics { contentDescription = "Tacta stage: ${scene.label}" },
         ) {
             Crossfade(targetState = scene, animationSpec = tween(260), label = "scene") { s ->
-                val sceneSignal = signal.takeIf { it.cue == null || it.cue.scene == s } ?: CueSignal(0, null)
                 when (s) {
-                    Scene.SNAP -> SnapScene(fire, sceneSignal, colors)
-                    Scene.KNOB -> KnobScene(fire, sceneSignal, colors)
-                    Scene.DROP -> DropScene(fire, sceneSignal, colors)
-                    Scene.ROLL -> RollScene(fire, sceneSignal, colors)
-                    Scene.BUBBLES -> BubbleScene(fire, sceneSignal, colors, still)
-                    Scene.BALLOONS -> BalloonScene(fire, sceneSignal, colors, still)
+                    Scene.SNAP -> SnapScene(fire, cues, colors)
+                    Scene.KNOB -> KnobScene(fire, cues, colors)
+                    Scene.DROP -> DropScene(fire, cues, colors)
+                    Scene.ROLL -> RollScene(fire, cues, colors)
+                    Scene.BUBBLES -> BubbleScene(fire, cues, colors, still)
+                    Scene.BALLOONS -> BalloonScene(fire, cues, colors, still)
                 }
             }
         }
@@ -150,16 +170,7 @@ fun OHapticsStudio(view: View, still: Boolean) {
                 if (playing) { reelRun = 0; playing = false } else reelRun++
             }
             Spacer(Modifier.width(Space.m))
-            Text(
-                readout,
-                color = colors.textTertiary,
-                style = PtType.mono,
-                modifier = Modifier.weight(1f).semantics { contentDescription = "Haptic readout: $readout" },
-                // Fixed two-line slot: a readout that wraps must never change the card's height.
-                minLines = 2,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            HapticReadout(readout, colors, Modifier.weight(1f))
         }
         // The tour bar always keeps its slot (and only redraws, never recomposes the card).
         Spacer(Modifier.height(Space.s))
@@ -209,6 +220,22 @@ private fun ReelButton(playing: Boolean, colors: PtColors, onClick: () -> Unit) 
             style = PtType.caption,
         )
     }
+}
+
+/** Its own recompose scope: a new readout (every fired pattern) redraws just this text. */
+@Composable
+private fun HapticReadout(text: State<String>, colors: PtColors, modifier: Modifier) {
+    val t = text.value
+    Text(
+        t,
+        color = colors.textTertiary,
+        style = PtType.mono,
+        modifier = modifier.semantics { contentDescription = "Haptic readout: $t" },
+        // Fixed two-line slot: a readout that wraps must never change the card's height.
+        minLines = 2,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 private fun describe(pattern: List<Step>): String =

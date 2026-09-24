@@ -83,7 +83,7 @@ private fun DrawScope.sphere(center: Offset, r: Float, base: Color, light: Color
 // ---------------------------------------------------------------- knob
 
 @Composable
-internal fun KnobScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: PtColors) {
+internal fun KnobScene(fire: (List<Step>) -> Unit, cues: Cues, colors: PtColors) {
     var angle by remember { mutableFloatStateOf(-90f) }
     var detentIdx by remember { mutableStateOf(floor(-90f / DETENT).toInt()) }
     val scope = rememberCoroutineScope()
@@ -98,8 +98,11 @@ internal fun KnobScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: Pt
     // Tour: one detent per measured tick. Launched in the scene's scope so the next cue (70-80 ms
     // later) retargets the spin instead of cancelling it mid-motion.
     var tourTarget by remember { mutableStateOf<Float?>(null) }
-    LaunchedEffect(signal.id) {
-        if (signal.cue?.scene != Scene.KNOB) { tourTarget = null; return@LaunchedEffect }
+    var lastTourCue by remember { mutableLongStateOf(0L) }
+    OnCue(cues, Scene.KNOB) {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastTourCue > 500) tourTarget = null   // a new tour starts from where the dial is
+        lastTourCue = now
         val target = (tourTarget ?: angle) + DETENT
         tourTarget = target
         scope.launch {
@@ -162,7 +165,7 @@ private const val DETENT = 12f   // 30 notches, as on the video's dial
 // ---------------------------------------------------------------- drop
 
 @Composable
-internal fun DropScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: PtColors) {
+internal fun DropScene(fire: (List<Step>) -> Unit, cues: Cues, colors: PtColors) {
     val height = remember { Animatable(0f) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -189,8 +192,8 @@ internal fun DropScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: Pt
     }
 
     // Tour: start on the lift cue only; the impact/bounce cues must not restart (and freeze) it.
-    LaunchedEffect(signal.id) {
-        if (signal.cue?.scene == Scene.DROP && signal.cue.pattern == OHaptics.dropLift && !busy) scope.launch { drop(haptics = false) }
+    OnCue(cues, Scene.DROP) { cue ->
+        if (cue.pattern == OHaptics.dropLift && !busy) scope.launch { drop(haptics = false) }
     }
 
     StageCanvas(Modifier.pointerInput(Unit) { detectTapGestures { if (!busy) scope.launch { drop(true) } } }) {
@@ -208,7 +211,7 @@ internal fun DropScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: Pt
 // ---------------------------------------------------------------- roll
 
 @Composable
-internal fun RollScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: PtColors) {
+internal fun RollScene(fire: (List<Step>) -> Unit, cues: Cues, colors: PtColors) {
     val x = remember { Animatable(0f) }
     var lastStep by remember { mutableStateOf(0) }
     var atEdge by remember { mutableStateOf(true) }
@@ -236,9 +239,8 @@ internal fun RollScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: Pt
     }
 
     // Tour: start on the first roll cue only; the texture cues every 70 ms must not restart it.
-    LaunchedEffect(signal.id) {
-        val cue = signal.cue
-        if (cue?.scene == Scene.ROLL && cue.atMs == OHaptics.reel.first { it.scene == Scene.ROLL }.atMs) scope.launch { rollAcross(haptics = false) }
+    OnCue(cues, Scene.ROLL) { cue ->
+        if (cue.atMs == OHaptics.reel.first { it.scene == Scene.ROLL }.atMs) scope.launch { rollAcross(haptics = false) }
     }
 
     StageCanvas(
@@ -285,7 +287,7 @@ private class Bubble(var x: Float, var y: Float, var r: Float, val phase: Float,
 private class Ripple(val x: Float, val y: Float, val r: Float, val born: Long)
 
 @Composable
-internal fun BubbleScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: PtColors, still: Boolean) {
+internal fun BubbleScene(fire: (List<Step>) -> Unit, cues: Cues, colors: PtColors, still: Boolean) {
     // Plain lists mutated on the frame loop; `frame` (read only while drawing) is the one state
     // write per frame, so the scene redraws without any recomposition or snapshot churn.
     val bubbles = remember { ArrayList<Bubble>().apply { repeat(7) { add(newBubble(spread = true)) } } }
@@ -314,9 +316,8 @@ internal fun BubbleScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: 
         ripples.add(Ripple(b.x, b.y, b.r, SystemClock.uptimeMillis()))
     }
 
-    LaunchedEffect(signal.id) {
-        val cue = signal.cue ?: return@LaunchedEffect
-        if (cue.scene != Scene.BUBBLES || bubbles.isEmpty()) return@LaunchedEffect
+    OnCue(cues, Scene.BUBBLES) { cue ->
+        if (bubbles.isEmpty()) return@OnCue
         if (cue.pattern == OHaptics.bubbleMerge && bubbles.size >= 2) {
             val big = bubbles.maxBy { it.r }
             val other = bubbles.filter { it !== big }.minBy { hypot(it.x - big.x, it.y - big.y) }
@@ -385,7 +386,7 @@ private class Balloon(val x: Float, val y: Float, val r: Float, val color: Color
 private class Burst(val x: Float, val y: Float, val color: Color, val born: Long, val big: Boolean)
 
 @Composable
-internal fun BalloonScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: PtColors, still: Boolean) {
+internal fun BalloonScene(fire: (List<Step>) -> Unit, cues: Cues, colors: PtColors, still: Boolean) {
     val balloons = remember { ArrayList<Balloon>().apply { addAll(balloonSet()) } }   // see BubbleScene
     val bursts = remember { ArrayList<Burst>() }
     var frame by remember { mutableLongStateOf(0L) }
@@ -405,9 +406,8 @@ internal fun BalloonScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors:
         bursts.add(Burst(b.x, b.y, b.color, SystemClock.uptimeMillis(), b.big))
     }
 
-    LaunchedEffect(signal.id) {
-        val cue = signal.cue ?: return@LaunchedEffect
-        if (cue.scene != Scene.BALLOONS || balloons.isEmpty()) return@LaunchedEffect
+    OnCue(cues, Scene.BALLOONS) { cue ->
+        if (balloons.isEmpty()) return@OnCue
         val target = if (cue.pattern == OHaptics.balloonBurst) balloons.firstOrNull { it.big } else balloons.firstOrNull { !it.big }
         (target ?: balloons.first()).let(::pop)
     }
@@ -465,7 +465,7 @@ private fun balloonSet() = listOf(
 // ---------------------------------------------------------------- snap (assembly)
 
 @Composable
-internal fun SnapScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: PtColors) {
+internal fun SnapScene(fire: (List<Step>) -> Unit, cues: Cues, colors: PtColors) {
     val t = remember { Animatable(0f) }   // ms into the assembly
     var built by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -486,8 +486,8 @@ internal fun SnapScene(fire: (List<Step>) -> Unit, signal: CueSignal, colors: Pt
     }
 
     // Tour: start on the first cue only; the following snap cues must not restart (and freeze) it.
-    LaunchedEffect(signal.id) {
-        if (signal.cue?.scene == Scene.SNAP && signal.cue.atMs == 0) scope.launch { assemble(haptics = false) }
+    OnCue(cues, Scene.SNAP) { cue ->
+        if (cue.atMs == 0) scope.launch { assemble(haptics = false) }
     }
 
     StageCanvas(
