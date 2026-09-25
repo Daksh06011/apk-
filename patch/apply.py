@@ -110,5 +110,18 @@ assert s.count(old) == 1
 s = s.replace(old, '"One of each system feel Android offers, plus distinct patterns where the system ones felt the same."')
 open(p, "w").write(s)
 
+# 6) Pulse Lab "Rise and fall" and "Drag threshold": replaced by the direct-manipulation versions in
+#    feature/PulseExtras.kt, in the same slots and under the same conditions.
+p = f"{root}/smali_classes5/com/phonetemp/app/ui/screens/PulseLabScreenKt$PulseLabScreen$2$4.smali"
+s = open(p).read()
+old = "    invoke-static/range {v5 .. v10}, Lcom/phonetemp/app/ui/screens/PulseLabScreenKt;->access$SequenceExample(Ljava/lang/String;Ljava/lang/String;ZLkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;I)V"
+assert s.count(old) == 1
+# v4 = the screen's View, v7 = still, v9 = composer, v0 = 0 ($changed)
+s = s.replace(old, "    invoke-static {v4, v7, v9, v0}, Lcom/phonetemp/app/ohaptics/PulseExtrasKt;->RiseFallExample(Landroid/view/View;ZLandroidx/compose/runtime/Composer;I)V")
+old = "    invoke-static {v4, v5, v0}, Lcom/phonetemp/app/ui/screens/PulseLabScreenKt;->access$DragThresholdExample(Landroid/view/View;Landroidx/compose/runtime/Composer;I)V"
+assert s.count(old) == 1
+s = s.replace(old, "    invoke-static {v4, v5, v0}, Lcom/phonetemp/app/ohaptics/PulseExtrasKt;->DragThresholdPad(Landroid/view/View;Landroidx/compose/runtime/Composer;I)V")
+open(p, "w").write(s)
+
 import os; shutil.copy(os.path.join(os.path.dirname(__file__), "GradientRing.smali"), f"{root}/smali_classes6/com/phonetemp/app/ui/components/GradientRing.smali")
 print("patched")

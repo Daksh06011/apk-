@@ -38,6 +38,12 @@ class ApkIntegrityTest {
         assertTrue(!String(original.bytes("classes5.dex"), Charsets.ISO_8859_1).contains("OHapticsStudio"))
     }
 
+    @Test fun pulseLabUsesTheRebuiltExamples() {
+        val dex = String(patched.bytes("classes5.dex"), Charsets.ISO_8859_1)
+        assertTrue(dex.contains("RiseFallExample"))
+        assertTrue(dex.contains("DragThresholdPad"))
+    }
+
     @Test fun manifestAndResourcesAreUntouched() {
         assertArrayEquals(original.bytes("AndroidManifest.xml"), patched.bytes("AndroidManifest.xml"))
         assertArrayEquals(original.bytes("resources.arsc"), patched.bytes("resources.arsc"))

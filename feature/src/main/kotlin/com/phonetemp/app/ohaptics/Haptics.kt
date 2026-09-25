@@ -93,6 +93,19 @@ class HapticPlayer(private val view: View) {
         }
     }
 
+    /**
+     * How long the motor takes to play each primitive (Android 12+ reports it per device), so an
+     * animation can be timed to the vibration it accompanies. Fallbacks are typical LRA values.
+     */
+    fun durationsMs(a: Prim, b: Prim): Pair<Long, Long> {
+        val fallback = mapOf(Prim.SLOW_RISE to 480L, Prim.QUICK_RISE to 150L, Prim.QUICK_FALL to 120L, Prim.SPIN to 200L)
+        val measured = runCatching {
+            if (Build.VERSION.SDK_INT >= 31) vibrator?.getPrimitiveDurations(a.id, b.id)?.map { it.toLong() } else null
+        }.getOrNull()
+        fun pick(i: Int, p: Prim) = measured?.getOrNull(i)?.takeIf { it > 0 } ?: fallback[p] ?: 60L
+        return pick(0, a) to pick(1, b)
+    }
+
     private fun composition(v: Vibrator, pattern: List<Step>): Boolean {
         val resolved = pattern.map { s ->
             val p = if (Build.VERSION.SDK_INT >= s.prim.minSdk && v.areAllPrimitivesSupported(s.prim.id)) s.prim
