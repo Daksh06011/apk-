@@ -88,6 +88,7 @@ class HomeScreenE2eTest {
         a.screenshot("power-dual-cell")
         println("power card: ${texts.filter { it.contains("W") || it.contains("cell") || it.contains("Current") || it.matches(Regex("[0-9.]+")) }}")
         assertTrue("caption: $texts", texts.any { it == "charger input (est.) · dual-cell" })
-        assertTrue("17.9 W expected: $texts", texts.any { it.startsWith("17.9") })
+        // the value is drawn digit by digit ("1","7",".","9","W"), so read it back joined
+        assertTrue("17.9 W expected: $texts", texts.joinToString("").contains("17.9W"))
     }
 }
