@@ -23,11 +23,17 @@ enum class Scene(val label: String, val hint: String) {
  * (-35 dB -> 0.3, -11 dB -> 1.0).
  */
 object OHaptics {
-    /** Knob detent: 15 ms, ~7.5 kHz, -28..-32 dB. */
-    val detent = steps(Step(TICK, 0.48f))
+    /**
+     * Knob detent: 15 ms, ~7.5 kHz in the video. A TICK primitive is too faint on many motors even at
+     * full scale, so each notch is a crisp CLICK instead (0.70 -> 0.98 after HapticGain).
+     */
+    val detent = steps(Step(CLICK, 0.70f))
 
-    /** Parts snapping together: 25-125 ms, 3.3-5.3 kHz. */
-    fun snap(scale: Float) = steps(Step(CLICK, scale))
+    /**
+     * Parts snapping together: 25-125 ms, 3.3-5.3 kHz. A two-stage click (catch, then seat) at
+     * near-full strength; the measured loudness still orders them (0.36 -> 0.87, 0.70 -> 0.94).
+     */
+    fun snap(scale: Float) = steps(Step(CLICK, 0.8f + 0.2f * scale), Step(TICK, 0.6f + 0.4f * scale, 14))
 
     /** Dial settling onto its base: two 600-760 Hz thuds 75 ms apart, ringing ~450 ms. */
     val settle = steps(Step(THUD, 0.70f), Step(THUD, 0.75f, 75))

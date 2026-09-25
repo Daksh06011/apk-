@@ -81,7 +81,7 @@ class OHapticsStudioE2eTest {
         activity.screenshot("studio-knob-turned")
         assertTrue("detents: ${fired.size}", fired.size in 7..8)
         fired.forEach { assertEquals(OHaptics.detent, it.pattern); assertEquals(Route.COMPOSITION, it.route) }
-        assertEquals(listOf(Step(Prim.TICK, 0.48f)), OHaptics.detent)
+        assertEquals(listOf(Step(Prim.CLICK, 0.70f)), OHaptics.detent)
     }
 
     @Test fun flickedKnobCoastsWithSlowingTicks() {

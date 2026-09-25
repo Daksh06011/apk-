@@ -77,5 +77,38 @@ new = """    invoke-static {}, Lcom/phonetemp/app/power/ChargePower;->caption()L
 s = s.replace(old, new)
 open(p, "w").write(s)
 
+# 5) Pulse Lab Feedback grid: one system constant per distinct feel, every duplicate re-cut as its
+#    own pattern (FeedbackGrid in feature/). Grid cell labels + click handler only.
+p = f"{root}/smali_classes5/com/phonetemp/app/ui/screens/PulseLabScreenKt$PulseLabScreen$2$1$1.smali"
+s = open(p).read()
+for getter, hook in (("getLabel", "label"), ("getTechnical", "technical")):
+    old = f"    invoke-virtual/range {{p1 .. p1}}, Lcom/phonetemp/app/data/haptics/FeedbackId;->{getter}()Ljava/lang/String;"
+    assert s.count(old) == 1, getter
+    s = s.replace(old, f"    invoke-static/range {{p1 .. p1}}, Lcom/phonetemp/app/ohaptics/FeedbackGrid;->{hook}(Lcom/phonetemp/app/data/haptics/FeedbackId;)Ljava/lang/String;")
+old = """    .line 152
+    invoke-static {p1}, Lcom/phonetemp/app/ui/screens/PulseLabScreenKt;->access$feedbackConstant(Lcom/phonetemp/app/data/haptics/FeedbackId;)I
+"""
+assert s.count(old) == 1
+s = s.replace(old, """    invoke-static {p0, p1}, Lcom/phonetemp/app/ohaptics/FeedbackGrid;->play(Landroid/view/View;Lcom/phonetemp/app/data/haptics/FeedbackId;)Z
+
+    move-result v0
+
+    if-eqz v0, :system_constant
+
+    sget-object v0, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
+
+    return-object v0
+
+    :system_constant
+""" + old)
+open(p, "w").write(s)
+
+p = f"{root}/smali_classes5/com/phonetemp/app/ui/screens/PulseLabScreenKt.smali"
+s = open(p).read()
+old = '"The constants Android uses for its own controls. These follow your system haptic setting."'
+assert s.count(old) == 1
+s = s.replace(old, '"One of each system feel Android offers, plus distinct patterns where the system ones felt the same."')
+open(p, "w").write(s)
+
 import os; shutil.copy(os.path.join(os.path.dirname(__file__), "GradientRing.smali"), f"{root}/smali_classes6/com/phonetemp/app/ui/components/GradientRing.smali")
 print("patched")
