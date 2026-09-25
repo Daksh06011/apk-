@@ -2,6 +2,7 @@ import android.os.SystemClock
 import android.os.Vibrator
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import com.phonetemp.app.ohaptics.HapticGain
 import com.phonetemp.app.ohaptics.HapticLog
 import com.phonetemp.app.ohaptics.OHaptics
 import com.phonetemp.app.ohaptics.Prim
@@ -249,7 +250,8 @@ class OHapticsStudioE2eTest {
         activity.tap(stage.center)
         advance(1200)
         println("vibrator received: $sent")
-        assertEquals(listOf(OHaptics.dropLift, OHaptics.dropImpact, OHaptics.dropBounce).map { p -> p.map { it.prim.id to it.scale } }, sent)
+        // what the motor gets is the pattern through Tacta's output gain
+        assertEquals(listOf(OHaptics.dropLift, OHaptics.dropImpact, OHaptics.dropBounce).map { p -> p.map { it.prim.id to HapticGain.apply(it.scale) } }, sent)
     }
 
     @Test fun fallsBackToAWaveformWithoutPrimitiveSupport() {

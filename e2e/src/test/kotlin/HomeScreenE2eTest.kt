@@ -73,4 +73,21 @@ class HomeScreenE2eTest {
         assertSame(FontFamily.Default, type.getMethod("getDisplay").invoke(null))
         assertSame(FontFamily.Default, type.getMethod("getMono").invoke(null))
     }
+
+    /** Your charger case: 1.97 A at a reported 4.19 V on a pack already measured as dual-cell. */
+    @Test fun powerCardShowsDualCellChargerInput() {
+        val app = RuntimeEnvironment.getApplication()
+        app.getSharedPreferences("charge_power", android.content.Context.MODE_PRIVATE).edit().putInt("cells", 2).commit()
+        org.robolectric.Shadows.shadowOf(app.getSystemService(android.os.BatteryManager::class.java)).apply {
+            setIsCharging(true)
+            setIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CURRENT_NOW, 1_970_000)
+            setIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY, 55)
+        }
+        val a = launch(38.5)
+        val texts = a.composeRoot().allText()
+        a.screenshot("power-dual-cell")
+        println("power card: ${texts.filter { it.contains("W") || it.contains("cell") || it.contains("Current") || it.matches(Regex("[0-9.]+")) }}")
+        assertTrue("caption: $texts", texts.any { it == "charger input (est.) · dual-cell" })
+        assertTrue("17.9 W expected: $texts", texts.any { it.startsWith("17.9") })
+    }
 }

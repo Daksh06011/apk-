@@ -47,5 +47,35 @@ studio = "    invoke-static {v4, v7, v10, v0}, Lcom/phonetemp/app/ohaptics/Studi
 s = s.replace(toggle, studio + toggle)
 open(p, "w").write(s)
 
+# 4) Charging power: route BatteryReading's watts through ChargePower (feature/), which corrects
+#    current x voltage for dual-cell packs, and show its status line under the Power number.
+p = f"{root}/smali_classes3/com/phonetemp/app/data/BatteryReading.smali"
+s = open(p).read()
+old = "    invoke-virtual {v15, v1, v2}, Lcom/phonetemp/app/data/Normalize;->estimateWatts(Ljava/lang/Float;Ljava/lang/Float;)Ljava/lang/Float;"
+assert s.count(old) == 1
+s = s.replace(old, "    invoke-static {v1, v2}, Lcom/phonetemp/app/power/ChargePower;->watts(Ljava/lang/Float;Ljava/lang/Float;)Ljava/lang/Float;")
+open(p, "w").write(s)
+
+p = f"{root}/smali_classes5/com/phonetemp/app/ui/screens/HomeScreenKt$PowerCard$1.smali"
+s = open(p).read()
+old = """    const-string v1, "estimated"
+
+    invoke-static {v1, v14, v9, v15, v13}, Lcom/phonetemp/app/ui/components/HomePartsKt;->CardCaption(Ljava/lang/String;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+"""
+assert s.count(old) == 1
+# $changed was 6 ("static literal"); a live caption must be compared, so pass 0, then restore v15 = 6.
+new = """    invoke-static {}, Lcom/phonetemp/app/power/ChargePower;->caption()Ljava/lang/String;
+
+    move-result-object v1
+
+    const/4 v15, 0x0
+
+    invoke-static {v1, v14, v9, v15, v13}, Lcom/phonetemp/app/ui/components/HomePartsKt;->CardCaption(Ljava/lang/String;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+
+    const/4 v15, 0x6
+"""
+s = s.replace(old, new)
+open(p, "w").write(s)
+
 import os; shutil.copy(os.path.join(os.path.dirname(__file__), "GradientRing.smali"), f"{root}/smali_classes6/com/phonetemp/app/ui/components/GradientRing.smali")
 print("patched")

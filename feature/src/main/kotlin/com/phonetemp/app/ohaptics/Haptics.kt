@@ -42,6 +42,17 @@ data class Step(val prim: Prim, val scale: Float, val delayMs: Int = 0)
 
 fun steps(vararg s: Step): List<Step> = s.toList()
 
+/**
+ * Output gain for Tacta. The patterns keep the video's relative strengths; this lifts them all so
+ * even the faint ones (knob ticks at 0.48, snaps at 0.36) are clearly felt, while the strongest
+ * hits saturate at full strength: 0.36 -> 0.68, 0.48 -> 0.78, 0.70 -> 0.94, >= 0.78 -> 1.0.
+ */
+object HapticGain {
+    const val FLOOR = 0.38f
+    const val SLOPE = 0.85f
+    fun apply(scale: Float): Float = (FLOOR + SLOPE * scale.coerceIn(0f, 1f)).coerceAtMost(1f)
+}
+
 /** How a pattern was actually delivered (for the on-screen readout and tests). */
 enum class Route { COMPOSITION, WAVEFORM, ONE_SHOT, VIEW_FEEDBACK, NONE }
 
@@ -90,7 +101,7 @@ class HapticPlayer(private val view: View) {
         }
         if (!v.areAllPrimitivesSupported(*resolved.map { it.prim.id }.distinct().toIntArray())) return false
         val c = VibrationEffect.startComposition()
-        resolved.forEach { c.addPrimitive(it.prim.id, it.scale.coerceIn(0f, 1f), it.delayMs) }
+        resolved.forEach { c.addPrimitive(it.prim.id, HapticGain.apply(it.scale), it.delayMs) }
         v.vibrate(c.compose())
         return true
     }
@@ -100,7 +111,7 @@ class HapticPlayer(private val view: View) {
         val amps = ArrayList<Int>()
         pattern.forEach { s ->
             if (s.delayMs > 0) { timings += s.delayMs.toLong(); amps += 0 }
-            val a = (s.prim.fallbackAmp * s.scale.coerceIn(0f, 1f)).toInt().coerceIn(1, 255)
+            val a = (255 * HapticGain.apply(s.scale) * s.prim.fallbackAmp / 255f).toInt().coerceIn(1, 255)
             when (s.prim) {
                 Prim.QUICK_FALL -> { timings += 15; amps += a; timings += 25; amps += a / 2 }
                 Prim.SLOW_RISE, Prim.QUICK_RISE -> { timings += s.prim.fallbackMs / 2; amps += a / 2; timings += s.prim.fallbackMs / 2; amps += a }
