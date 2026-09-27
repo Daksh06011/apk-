@@ -123,6 +123,14 @@ assert s.count(old) == 1
 s = s.replace(old, "    invoke-static {v4, v5, v0}, Lcom/phonetemp/app/ohaptics/PulseExtrasKt;->DragThresholdPad(Landroid/view/View;Landroidx/compose/runtime/Composer;I)V")
 open(p, "w").write(s)
 
+# 8) App name on the Home screen header (the launcher label is resources.arsc, see build.sh).
+p = f"{root}/smali_classes5/com/phonetemp/app/ui/screens/HomeScreenKt.smali"
+s = open(p).read()
+old = '    const-string v14, "Phone Temp"\n'
+assert s.count(old) == 1
+s = s.replace(old, '    const-string v14, "VT:Phone Temp"\n')
+open(p, "w").write(s)
+
 # 7) Battery current units: decide microamps vs milliamps by the raw magnitude (ChargePower.amps).
 p = f"{root}/smali_classes3/com/phonetemp/app/data/Normalize.smali"
 s = open(p).read()

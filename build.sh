@@ -22,6 +22,7 @@ python3 tools/apk/version.py "$WORK/src/AndroidManifest.xml" "$(date -u +%y%m%d%
 # Its own package name, so it installs next to any PhoneTemp already on the phone. Android refuses
 # to replace an installed app (or one kept after "uninstall, keep data") signed with a different key.
 python3 tools/apk/rename.py "$WORK/src/AndroidManifest.xml" com.phonetemp.app com.phonetemp.tacta
+python3 tools/apk/label.py "$WORK/src/resources.arsc" "Phone Temp" "VT:Phone Temp"
 java -jar $TOOLS/apktool.jar b "$WORK/src" -o "$WORK/unsigned.apk"
 # O-Haptics Studio (feature/): Kotlin/Compose compiled against the app, dexed, added as classes10.dex.
 gradle --no-daemon -q :feature:dex

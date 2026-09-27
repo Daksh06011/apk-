@@ -44,8 +44,22 @@ class ApkIntegrityTest {
         assertTrue(dex.contains("DragThresholdPad"))
     }
 
-    @Test fun resourcesAreUntouched() {
-        assertArrayEquals(original.bytes("resources.arsc"), patched.bytes("resources.arsc"))
+    @Test fun appIsNamedVtPhoneTemp() {
+        // resources.arsc: only the global string pool changes (app_name's value). Same number of
+        // strings, and every package, type and entry chunk after the pool is byte-for-byte the same.
+        val a = original.bytes("resources.arsc")
+        val b = patched.bytes("resources.arsc")
+        fun le(x: ByteArray, at: Int) = java.nio.ByteBuffer.wrap(x).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt(at)
+        assertEquals(le(a, 12 + 8), le(b, 12 + 8))
+        val poolEndA = 12 + le(a, 12 + 4)
+        val poolEndB = 12 + le(b, 12 + 4)
+        assertArrayEquals(a.copyOfRange(poolEndA, a.size), b.copyOfRange(poolEndB, b.size))
+        val before = String(a, Charsets.UTF_8)
+        val after = String(b, Charsets.UTF_8)
+        assertTrue(before.contains("Phone Temp") && !before.contains("VT:Phone Temp"))
+        assertTrue(after.contains("VT:Phone Temp"))
+        // Home screen header
+        assertTrue(String(patched.bytes("classes5.dex"), Charsets.ISO_8859_1).contains("VT:Phone Temp"))
     }
 
     @Test fun manifestHasItsOwnPackageAndANewerVersion() {
