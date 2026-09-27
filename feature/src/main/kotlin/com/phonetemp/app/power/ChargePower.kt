@@ -45,6 +45,24 @@ object ChargePower {
     private var reportedWh = 0.0
     private var lastSampleMs = 0L
 
+    /** Raw CURRENT_NOW at or above this is microamps; below it, milliamps (50 mA vs 50 A). */
+    const val MICROAMP_THRESHOLD = 50_000
+
+    /**
+     * Replacement for Normalize.microampsToAmps. Android documents CURRENT_NOW in microamps, but
+     * some phones (OnePlus CPH2745 among them) report milliamps. The original tried microamps first
+     * and only fell back when the result looked implausible, so 14 000 mA of fast charge read as
+     * 0.014 A. The raw magnitude settles it: no phone draws under 50 mA as microamps' 50 000, and
+     * none reaches 50 A, so the two ranges never overlap.
+     */
+    @JvmStatic
+    fun amps(raw: Int?): Float? {
+        if (raw == null || raw == 0 || raw == Int.MIN_VALUE) return null
+        val magnitude = Math.abs(raw.toLong())
+        val a = if (magnitude >= MICROAMP_THRESHOLD) magnitude / 1_000_000f else magnitude / 1_000f
+        return a.takeIf { it in 0.001f..40f }
+    }
+
     /** Replacement for Normalize.estimateWatts(amps, volts). */
     @JvmStatic
     @Synchronized

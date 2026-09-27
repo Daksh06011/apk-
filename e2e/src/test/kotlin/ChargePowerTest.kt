@@ -36,4 +36,27 @@ class ChargePowerTest {
         assertEquals(1.0f, HapticGain.apply(0.92f), 0.0001f)   // drop impact
         assertTrue(HapticGain.apply(0.5f) > 0.5f)
     }
+
+    @Test fun currentUnitsFollowRawMagnitude() {
+        // OnePlus CPH2745 reports milliamps: -590 while discharging, ~29 300 at 120 W.
+        assertEquals(0.59f, ChargePower.amps(-590)!!, 1e-4f)
+        assertEquals(0.569f, ChargePower.amps(569)!!, 1e-4f)
+        assertEquals(14.0f, ChargePower.amps(14_000)!!, 1e-3f)   // the original read this as 0.014 A
+        assertEquals(29.3f, ChargePower.amps(29_300)!!, 1e-3f)
+        // documented microamps
+        assertEquals(1.97f, ChargePower.amps(1_970_000)!!, 1e-4f)
+        assertEquals(0.05f, ChargePower.amps(50_000)!!, 1e-5f)
+        assertEquals(5.5f, ChargePower.amps(-5_500_000)!!, 1e-4f)
+        assertNull(ChargePower.amps(null))
+        assertNull(ChargePower.amps(0))
+        assertNull(ChargePower.amps(Int.MIN_VALUE))
+    }
+
+    @Test fun shippedNormalizeUsesTheMagnitudeRule() {
+        // The app's own Normalize, as patched into the APK.
+        val n = com.phonetemp.app.data.Normalize
+        assertEquals(14.0f, n.microampsToAmps(14_000)!!, 1e-3f)
+        assertEquals(0.59f, n.microampsToAmps(-590)!!, 1e-4f)
+        assertEquals(1.97f, n.microampsToAmps(1_970_000)!!, 1e-4f)
+    }
 }

@@ -123,5 +123,21 @@ assert s.count(old) == 1
 s = s.replace(old, "    invoke-static {v4, v5, v0}, Lcom/phonetemp/app/ohaptics/PulseExtrasKt;->DragThresholdPad(Landroid/view/View;Landroidx/compose/runtime/Composer;I)V")
 open(p, "w").write(s)
 
+# 7) Battery current units: decide microamps vs milliamps by the raw magnitude (ChargePower.amps).
+p = f"{root}/smali_classes3/com/phonetemp/app/data/Normalize.smali"
+s = open(p).read()
+start = s.index(".method public final microampsToAmps(Ljava/lang/Integer;)Ljava/lang/Float;")
+end = s.index(".end method", start) + len(".end method")
+s = s[:start] + """.method public final microampsToAmps(Ljava/lang/Integer;)Ljava/lang/Float;
+    .locals 1
+
+    invoke-static {p1}, Lcom/phonetemp/app/power/ChargePower;->amps(Ljava/lang/Integer;)Ljava/lang/Float;
+
+    move-result-object v0
+
+    return-object v0
+.end method""" + s[end:]
+open(p, "w").write(s)
+
 import os; shutil.copy(os.path.join(os.path.dirname(__file__), "GradientRing.smali"), f"{root}/smali_classes6/com/phonetemp/app/ui/components/GradientRing.smali")
 print("patched")
