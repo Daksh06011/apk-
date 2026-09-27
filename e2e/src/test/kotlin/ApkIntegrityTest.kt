@@ -44,9 +44,21 @@ class ApkIntegrityTest {
         assertTrue(dex.contains("DragThresholdPad"))
     }
 
-    @Test fun manifestAndResourcesAreUntouched() {
-        assertArrayEquals(original.bytes("AndroidManifest.xml"), patched.bytes("AndroidManifest.xml"))
+    @Test fun resourcesAreUntouched() {
         assertArrayEquals(original.bytes("resources.arsc"), patched.bytes("resources.arsc"))
+    }
+
+    @Test fun manifestOnlyRaisesTheVersionCode() {
+        // A higher versionCode installs as an update over any earlier build instead of a refused
+        // downgrade. Nothing else in the manifest changes: at most the 4 bytes of that one int.
+        val a = original.bytes("AndroidManifest.xml")
+        val b = patched.bytes("AndroidManifest.xml")
+        assertEquals(a.size, b.size)
+        val diff = a.indices.filter { a[it] != b[it] }
+        assertTrue("changed bytes $diff", diff.size in 1..4 && diff.last() - diff.first() < 4)
+        val at = diff.first() - diff.first() % 4
+        val code = java.nio.ByteBuffer.wrap(b, at, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).int
+        assertTrue("versionCode $code", code > 1)
     }
 
     @Test fun keepsEveryNonDexEntry() {
@@ -57,7 +69,7 @@ class ApkIntegrityTest {
     }
 
     @Test fun nativeLibsAreStoredAndPageAligned() {
-        // extractNativeLibs=false: the loader maps .so files straight out of the APK.
+        // extractNativeLibs=false: the loader maps .so files straight out of the APK, 16 KiB pages included.
         val raf = java.io.RandomAccessFile(File(System.getProperty("apk.path")), "r")
         patched.entries().asSequence().filter { it.name.endsWith(".so") }.forEach { e ->
             assertEquals("${e.name} must be stored", java.util.zip.ZipEntry.STORED, e.method)
@@ -66,7 +78,7 @@ class ApkIntegrityTest {
             val nameLen = (header[26].toInt() and 0xff) or ((header[27].toInt() and 0xff) shl 8)
             val extraLen = (header[28].toInt() and 0xff) or ((header[29].toInt() and 0xff) shl 8)
             val dataOffset = e.localHeaderOffset() + 30 + nameLen + extraLen
-            assertEquals("${e.name} data offset $dataOffset", 0L, dataOffset % 4096)
+            assertEquals("${e.name} data offset $dataOffset", 0L, dataOffset % 16384)
         }
     }
 

@@ -16,6 +16,9 @@ python3 patch/apply.py "$WORK/src"
 # default methods (used by Compose and GradientRing) in dex < 037 -> crash on launch. Match the
 # original APK (minSdk 26 -> dex 038).
 sed -i "s/^sdkInfo:.*/sdkInfo:\n  minSdkVersion: '26'\n  targetSdkVersion: '35'/" "$WORK/src/apktool.yml"
+# A versionCode above any earlier build (the original is 1), so Android treats this as an update
+# instead of refusing a downgrade. Date based, so each rebuild is newer than the last.
+python3 tools/apk/version.py "$WORK/src/AndroidManifest.xml" "$(date -u +%y%m%d%H)"
 java -jar $TOOLS/apktool.jar b "$WORK/src" -o "$WORK/unsigned.apk"
 # O-Haptics Studio (feature/): Kotlin/Compose compiled against the app, dexed, added as classes10.dex.
 gradle --no-daemon -q :feature:dex
@@ -25,7 +28,8 @@ with zipfile.ZipFile(sys.argv[1], "a", zipfile.ZIP_DEFLATED) as z:
     assert "classes10.dex" not in z.namelist()
     z.write(sys.argv[2], "classes10.dex")
 PY
-java -jar $TOOLS/signer.jar -a "$WORK/unsigned.apk" -o "$WORK/signed"
+python3 tools/apk/align.py "$WORK/unsigned.apk" "$WORK/aligned.apk"
+java -jar $TOOLS/signer.jar -a "$WORK/aligned.apk" -o "$WORK/signed" --skipZipAlign
 cp "$WORK"/signed/*-debugSigned.apk dist/PhoneTemp-1.0.1-debug.apk
 rm -rf "$WORK"
 echo "Built dist/PhoneTemp-1.0.1-debug.apk"
