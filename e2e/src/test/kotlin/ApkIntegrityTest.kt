@@ -48,17 +48,40 @@ class ApkIntegrityTest {
         assertArrayEquals(original.bytes("resources.arsc"), patched.bytes("resources.arsc"))
     }
 
-    @Test fun manifestOnlyRaisesTheVersionCode() {
-        // A higher versionCode installs as an update over any earlier build instead of a refused
-        // downgrade. Nothing else in the manifest changes: at most the 4 bytes of that one int.
-        val a = original.bytes("AndroidManifest.xml")
-        val b = patched.bytes("AndroidManifest.xml")
-        assertEquals(a.size, b.size)
-        val diff = a.indices.filter { a[it] != b[it] }
-        assertTrue("changed bytes $diff", diff.size in 1..4 && diff.last() - diff.first() < 4)
-        val at = diff.first() - diff.first() % 4
-        val code = java.nio.ByteBuffer.wrap(b, at, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).int
+    @Test fun manifestHasItsOwnPackageAndANewerVersion() {
+        // Installs beside any earlier PhoneTemp: new package, permission and provider authority;
+        // activity class names unchanged; versionCode above the original's 1.
+        val strings = String(patched.bytes("AndroidManifest.xml"), Charsets.UTF_16LE)
+        assertTrue(strings.contains("com.phonetemp.tacta\u0000"))
+        assertTrue(strings.contains("com.phonetemp.tacta.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"))
+        assertTrue(strings.contains("com.phonetemp.tacta.androidx-startup"))
+        assertTrue(strings.contains("com.phonetemp.app.MainActivity"))
+        assertTrue(!Regex("com\\.phonetemp\\.app[.\\-](DYNAMIC|androidx)").containsMatchIn(strings))
+        assertTrue(!strings.contains("com.phonetemp.app\u0000"))
+        val code = versionCode(patched.bytes("AndroidManifest.xml"))
         assertTrue("versionCode $code", code > 1)
+    }
+
+    /** android:versionCode (attr 0x0101021b) from a binary manifest. */
+    private fun versionCode(b: ByteArray): Int {
+        val buf = java.nio.ByteBuffer.wrap(b).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        var pos = 8
+        var ids = IntArray(0)
+        while (pos < b.size) {
+            val type = buf.getShort(pos).toInt() and 0xffff
+            val size = buf.getInt(pos + 4)
+            if (type == 0x0180) ids = IntArray((size - 8) / 4) { buf.getInt(pos + 8 + 4 * it) }
+            if (type == 0x0102) {
+                val start = buf.getShort(pos + 24).toInt(); val step = buf.getShort(pos + 26).toInt()
+                repeat(buf.getShort(pos + 28).toInt()) {
+                    val a = pos + 16 + start + it * step
+                    val name = buf.getInt(a + 4)
+                    if (name in ids.indices && ids[name] == 0x0101021b) return buf.getInt(a + 16)
+                }
+            }
+            pos += size
+        }
+        error("no versionCode")
     }
 
     @Test fun keepsEveryNonDexEntry() {

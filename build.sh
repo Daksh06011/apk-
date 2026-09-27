@@ -19,6 +19,9 @@ sed -i "s/^sdkInfo:.*/sdkInfo:\n  minSdkVersion: '26'\n  targetSdkVersion: '35'/
 # A versionCode above any earlier build (the original is 1), so Android treats this as an update
 # instead of refusing a downgrade. Date based, so each rebuild is newer than the last.
 python3 tools/apk/version.py "$WORK/src/AndroidManifest.xml" "$(date -u +%y%m%d%H)"
+# Its own package name, so it installs next to any PhoneTemp already on the phone. Android refuses
+# to replace an installed app (or one kept after "uninstall, keep data") signed with a different key.
+python3 tools/apk/rename.py "$WORK/src/AndroidManifest.xml" com.phonetemp.app com.phonetemp.tacta
 java -jar $TOOLS/apktool.jar b "$WORK/src" -o "$WORK/unsigned.apk"
 # O-Haptics Studio (feature/): Kotlin/Compose compiled against the app, dexed, added as classes10.dex.
 gradle --no-daemon -q :feature:dex
